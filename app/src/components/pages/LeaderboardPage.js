@@ -31,7 +31,7 @@ export default function LeaderboardPage() {
     <div className="flex-1 flex flex-col overflow-hidden">
       {/* Header */}
       <header className="px-4 py-4 bg-surface border-b border-border">
-        <h1 className="font-pixel text-sm text-text-primary mb-4">Leaderboard</h1>
+        <h1 className="font-pixel text-[12px] text-text-primary mb-4">Leaderboard</h1>
         
         {/* Tab Switcher */}
         <div className="flex bg-base rounded-xl p-1 mb-4">
@@ -149,7 +149,7 @@ function LeaderboardRow({ entry, sortBy, isCurrentUser }) {
       </div>
       
       {/* Value */}
-      <div className={`font-pixel text-sm ${rank <= 3 ? "text-accent" : "text-text-secondary"}`}>
+      <div className={`font-pixel text-[10px] ${rank <= 3 ? "text-accent" : "text-text-secondary"}`}>
         {getValue()}
       </div>
     </div>

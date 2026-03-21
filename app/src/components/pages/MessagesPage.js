@@ -32,7 +32,7 @@ export default function MessagesPage() {
     <div className="flex-1 flex flex-col overflow-hidden">
       {/* Header */}
       <header className="px-4 py-4 bg-surface border-b border-border">
-        <h1 className="font-pixel text-sm text-text-primary mb-4">Messages</h1>
+        <h1 className="font-pixel text-[12px] text-text-primary mb-4">Messages</h1>
         
         {/* Tab Switcher */}
         <div className="flex bg-base rounded-xl p-1">

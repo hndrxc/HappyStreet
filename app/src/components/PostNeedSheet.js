@@ -59,7 +59,7 @@ export default function PostNeedSheet({ isOpen, onClose }) {
           
           {/* Header */}
           <div className="flex items-center justify-between px-5 pb-4">
-            <h2 className="font-pixel text-sm text-text-primary">Post a Need</h2>
+            <h2 className="font-pixel text-[12px] text-text-primary">Post a Need</h2>
             <button 
               onClick={onClose}
               className="p-2 -mr-2 text-text-muted hover:text-text-primary transition-colors"

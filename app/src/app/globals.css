@@ -94,11 +94,10 @@ body {
   z-index: 9999;
 }
 
-/* Pixel font for headers and numbers */
+/* Pixel font for headers and numbers - use at 10-14px for headers, 8-10px for labels */
 .font-pixel {
   font-family: var(--font-press-start), 'Press Start 2P', 'Courier New', monospace;
   letter-spacing: -0.5px;
-  font-size: 0.75em;
 }
 
 /* Soft warm shadows */

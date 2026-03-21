@@ -60,7 +60,7 @@ export default function SharesPage() {
     <div className="flex-1 flex flex-col overflow-hidden">
       {/* Header */}
       <header className="px-4 py-4 bg-surface border-b border-border">
-        <h1 className="font-pixel text-sm text-text-primary mb-2">Your Shares</h1>
+        <h1 className="font-pixel text-[12px] text-text-primary mb-2">Your Shares</h1>
         <p className="text-text-secondary text-sm">
           Total value: <span className="font-pixel text-accent">${totalValue.toFixed(2)}</span>
         </p>
@@ -138,7 +138,7 @@ function ShareRow({ share, isSelling, onSell }) {
           </div>
         </div>
         <div className="text-right shrink-0">
-          <p className="font-pixel text-accent text-sm mb-2">
+          <p className="font-pixel text-accent text-[10px] mb-2">
             ${totalValue.toFixed(2)}
           </p>
           <button
@@ -173,13 +173,13 @@ function SellAllConfirmModal({ totalValue, onConfirm, onCancel }) {
           <div className="w-14 h-14 rounded-full bg-accent/10 flex items-center justify-center mx-auto mb-4">
             <SharesIcon className="w-7 h-7 text-accent" />
           </div>
-          <h3 className="font-pixel text-sm text-text-primary text-center mb-2">
+          <h3 className="font-pixel text-[12px] text-text-primary text-center mb-2">
             Sell All Shares?
           </h3>
           <p className="text-text-secondary text-sm text-center mb-2">
             You will receive:
           </p>
-          <p className="font-pixel text-accent text-lg text-center mb-6">
+          <p className="font-pixel text-accent text-[14px] text-center mb-6">
             ${totalValue.toFixed(2)}
           </p>
           <div className="flex gap-3">
