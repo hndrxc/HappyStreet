@@ -1,35 +1,125 @@
 @import "tailwindcss";
 
 @theme inline {
-  --color-terminal-bg: #0d0d0d;
-  --color-terminal-surface: #1a1a1a;
-  --color-terminal-border: #222;
-  --color-terminal-border-dim: #111;
-  --color-terminal-text: #e8e0d0;
-  --color-terminal-muted: #555;
-  --color-terminal-muted-dark: #444;
-  --color-terminal-accent: #00ff88;
-  --color-terminal-danger: #ff4455;
-  --color-terminal-bar: #00ff8811;
-  --font-mono: "Courier New", monospace;
-  --animate-flash-up: flash-up 0.8s ease-out;
-  --animate-flash-down: flash-down 0.8s ease-out;
+  /* Base palette - Warm white and cream */
+  --color-base: #FDFAF5;
+  --color-base-darker: #F5F0E8;
+  --color-surface: #FFFFFF;
+  
+  /* Accent colors - Amber and honey gold */
+  --color-accent: #E8A020;
+  --color-accent-light: #F5C842;
+  --color-accent-glow: #E8A02033;
+  
+  /* Text colors - Deep warm brown */
+  --color-text-primary: #2C1A0E;
+  --color-text-secondary: #5C4A3E;
+  --color-text-muted: #8C7A6E;
+  --color-text-on-accent: #FFFFFF;
+  
+  /* Border and shadow */
+  --color-border: #E8DFD4;
+  --color-border-warm: #D4C4B4;
+  --color-shadow: #2C1A0E15;
+  --color-shadow-warm: #E8A02025;
+  
+  /* Status colors */
+  --color-gold: #E8A020;
+  --color-silver: #A8A8A8;
+  --color-bronze: #CD7F32;
+  --color-success: #4CAF50;
+  --color-error: #E85A4F;
+  
+  /* Chat colors */
+  --color-chat-mine: #E8A020;
+  --color-chat-theirs: #E8E0D8;
+  
+  /* Typography */
+  --font-display: var(--font-press-start), 'Courier New', monospace;
+  --font-sans: var(--font-inter), system-ui, sans-serif;
+  
+  /* Animations */
+  --animate-slide-up: slide-up 0.3s ease-out;
+  --animate-slide-down: slide-down 0.3s ease-out;
+  --animate-slide-right: slide-right 0.4s ease-out forwards;
+  --animate-fade-in: fade-in 0.2s ease-out;
+  --animate-pulse-gold: pulse-gold 2s infinite;
 }
 
-@keyframes flash-up {
-  0% { background-color: #0a2e1a; }
-  100% { background-color: transparent; }
+@keyframes slide-up {
+  from { transform: translateY(100%); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
 }
 
-@keyframes flash-down {
-  0% { background-color: #2e0a0a; }
-  100% { background-color: transparent; }
+@keyframes slide-down {
+  from { transform: translateY(0); opacity: 1; }
+  to { transform: translateY(100%); opacity: 0; }
+}
+
+@keyframes slide-right {
+  from { transform: translateX(0); opacity: 1; }
+  to { transform: translateX(100%); opacity: 0; }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes pulse-gold {
+  0%, 100% { box-shadow: 0 0 0 0 var(--color-accent-glow); }
+  50% { box-shadow: 0 0 0 8px transparent; }
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
+html, body {
+  height: 100%;
+  overflow: hidden;
+}
+
 body {
-  background: var(--color-terminal-bg);
-  color: var(--color-terminal-text);
-  font-family: var(--font-mono);
+  background: var(--color-base);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+}
+
+/* Grain texture overlay */
+.grain-overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.03;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+  z-index: 9999;
+}
+
+/* Pixel font for headers and numbers */
+.font-pixel {
+  font-family: var(--font-press-start), 'Press Start 2P', 'Courier New', monospace;
+  letter-spacing: -0.5px;
+  font-size: 0.75em;
+}
+
+/* Soft warm shadows */
+.shadow-warm {
+  box-shadow: 0 4px 20px var(--color-shadow), 0 2px 8px var(--color-shadow-warm);
+}
+
+.shadow-warm-sm {
+  box-shadow: 0 2px 8px var(--color-shadow);
+}
+
+/* Gold glow effect for premium elements */
+.glow-gold {
+  box-shadow: 0 0 20px var(--color-accent-glow);
+}
+
+/* Hide scrollbar but allow scrolling */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
 }

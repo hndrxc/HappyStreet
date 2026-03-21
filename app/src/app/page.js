@@ -1,5 +1,5 @@
-import QuestBoard from "@/components/QuestBoard";
+import AppShell from "@/components/AppShell";
 
 export default function Home() {
-  return <QuestBoard />;
+  return <AppShell />;
 }
