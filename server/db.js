@@ -11,26 +11,26 @@ async function connect(uri) {
 
 // --- Quests ---
 async function getQuests() {
-  return await db.collection("questTable").find().toArray();
+  const docs = await db.collection("questTable").find().toArray();
+  return docs.map(({ _id, ...rest }) => ({ id: _id.toString(), ...rest }));
 }
 
 async function createQuest(title, value = 100) {
   const result = await db.collection("questTable").insertOne({ title, value, completions: 0 });
-  return await db.collection("questTable").findOne({ _id: result.insertedId });
+  const doc = await db.collection("questTable").findOne({ _id: result.insertedId });
+  const { _id, ...rest } = doc;
+  return { id: _id.toString(), ...rest };
 }
 
 async function completeQuest(questId) {
   const oid = new ObjectId(questId);
-  const quest = await db.collection("questTable").findOneAndUpdate(
+  const doc = await db.collection("questTable").findOneAndUpdate(
     { _id: oid },
     { $inc: { completions: 1, value: -20 } },
     { returnDocument: "after" }
   );
-  await db.collection("questTable").updateMany(
-    { _id: { $ne: oid } },
-    { $inc: { value: 5 } }
-  );
-  return quest;
+  const { _id, ...rest } = doc;
+  return { id: _id.toString(), ...rest };
 }
 
 // --- Users ---

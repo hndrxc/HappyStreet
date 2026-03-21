@@ -44,7 +44,7 @@ io.on("connection", async (socket) => {
 // --- Start ---
 const PORT = process.env.PORT || 3001;
 
-db.connect(process.env.MONGO_URI).then(() => {
+db.connect(process.env.MONGODB_URI).then(() => {
   server.listen(PORT, () => console.log(`server running on http://localhost:${PORT}`));
 }).catch(err => {
   console.error("MongoDB connection failed:", err);
