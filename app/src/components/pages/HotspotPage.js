@@ -19,7 +19,7 @@ export default function HotspotPage() {
         <div className="w-20 h-20 rounded-full bg-base-darker flex items-center justify-center mb-6">
           <CompassIcon className="w-10 h-10 text-text-muted" />
         </div>
-        <h2 className="font-pixel text-lg text-text-primary mb-2">
+        <h2 className="font-pixel text-[12px] text-text-primary mb-2">
           Not Near a Hotspot
         </h2>
         <p className="text-text-secondary mb-8">
@@ -61,7 +61,7 @@ export default function HotspotPage() {
       <header className="px-4 py-5 bg-surface border-b border-border">
         <div className="flex items-center gap-3">
           <div className="w-3 h-3 rounded-full bg-success animate-pulse" />
-          <h1 className="font-pixel text-sm text-text-primary">
+          <h1 className="font-pixel text-[12px] text-text-primary">
             {currentHotspot.name}
           </h1>
         </div>

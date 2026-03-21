@@ -1,14 +1,17 @@
 "use client";
 
 import { useState } from "react";
+import { useAuth } from "@/context/AuthContext";
 import BottomTabBar from "./BottomTabBar";
 import HotspotPage from "./pages/HotspotPage";
 import MessagesPage from "./pages/MessagesPage";
 import LeaderboardPage from "./pages/LeaderboardPage";
 import SharesPage from "./pages/SharesPage";
 import ProfilePage from "./pages/ProfilePage";
+import LoginPage from "./pages/LoginPage";
 
 export default function AppShell() {
+  const { user, isLoading } = useAuth();
   const [activeTab, setActiveTab] = useState("hotspot");
 
   const renderPage = () => {
@@ -27,6 +30,21 @@ export default function AppShell() {
         return <HotspotPage />;
     }
   };
+
+  // Loading state
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-base flex items-center justify-center">
+        <div className="grain-overlay" />
+        <p className="font-pixel text-[10px] text-accent animate-pulse">Loading...</p>
+      </div>
+    );
+  }
+
+  // Not authenticated - show login
+  if (!user) {
+    return <LoginPage />;
+  }
 
   return (
     <div className="min-h-screen bg-base">

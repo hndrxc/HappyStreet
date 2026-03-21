@@ -20,7 +20,7 @@ export default function QuestCard({ quest }) {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <span className="font-pixel text-accent text-sm">
+          <span className="font-pixel text-accent text-[10px]">
             ${value.toFixed(2)}
           </span>
           <ChevronRightIcon className="w-5 h-5 text-text-muted" />

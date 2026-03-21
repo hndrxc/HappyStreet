@@ -25,7 +25,7 @@ export default function BottomTabBar({ activeTab, onTabChange }) {
               }`}
             >
               <Icon className="w-6 h-6 mb-1" active={isActive} />
-              <span className={`text-[10px] font-medium ${isActive ? "text-accent" : "text-text-muted"}`}>
+              <span className={`font-pixel text-[8px] ${isActive ? "text-accent" : "text-text-muted"}`}>
                 {label}
               </span>
             </button>

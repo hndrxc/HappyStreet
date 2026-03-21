@@ -147,7 +147,7 @@ function ConfirmDoneModal({ onConfirm, onCancel }) {
           <div className="w-14 h-14 rounded-full bg-accent/10 flex items-center justify-center mx-auto mb-4">
             <CheckIcon className="w-7 h-7 text-accent" />
           </div>
-          <h3 className="font-pixel text-sm text-text-primary text-center mb-2">
+          <h3 className="font-pixel text-[12px] text-text-primary text-center mb-2">
             Mark as Done?
           </h3>
           <p className="text-text-secondary text-sm text-center mb-6">
