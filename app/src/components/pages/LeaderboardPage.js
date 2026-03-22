@@ -42,6 +42,8 @@ export default function LeaderboardPage() {
     return () => socket.off("quest_completed", onQuestCompleted);
   }, [socket]);
 
+  console.log("[Leaderboard] render — data:", data.length, "loading:", loading, "entries:", data.map(d => `${d.username}=${d.joy_coins}JC`).join(", "));
+
   const sortedData = useMemo(() => {
     const sorted = [...data];
     if (sortBy === "joy_coins") {

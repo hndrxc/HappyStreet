@@ -202,7 +202,7 @@ export default function ChatView({
               className={`flex ${isMine ? "justify-end" : "justify-start"}`}
             >
               <div
-                className={`max-w-[80%] rounded-2xl ${
+                className={`chat-bubble max-w-[80%] rounded-2xl ${
                   isMine
                     ? "bg-accent text-text-on-accent rounded-br-md"
                     : "bg-surface border border-border text-text-primary rounded-bl-md"

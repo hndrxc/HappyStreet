@@ -854,9 +854,10 @@ io.on("connection", async (socket) => {
   });
 
   socket.on("complete_quest", async (payload) => {
+    console.log("[complete_quest] ===== RECEIVED =====", JSON.stringify(payload));
     try {
       const questId = typeof payload === "string" ? payload : payload?.questId;
-      if (!questId) return;
+      if (!questId) { console.log("[complete_quest] no questId, aborting"); return; }
 
       const happinessRating = typeof payload === "object" ? payload?.happinessRating : null;
       const conversationId = typeof payload === "object" ? payload?.conversationId : null;
@@ -865,9 +866,12 @@ io.on("connection", async (socket) => {
           ? (payload?.recipientId ?? payload?.userId ?? null)
           : null;
 
+      console.log("[complete_quest] questId:", questId, "rating:", happinessRating, "convId:", conversationId);
+
       // Tunnel-based completion: called from ChatView "Done" button
       if (conversationId) {
         const tunnel = await db.getTunnel(conversationId);
+        console.log("[complete_quest] tunnel lookup:", tunnel ? `found (recipient=${tunnel.recipient_id})` : "NOT FOUND");
         if (!tunnel) {
           socket.emit("quest_completion_rejected", { questId, reason: "tunnel_not_found" });
           return;
@@ -875,6 +879,7 @@ io.on("connection", async (socket) => {
 
         // Mark tunnel as completed
         await db.updateTunnelStatus(conversationId, "COMPLETED");
+        console.log("[complete_quest] tunnel marked COMPLETED");
 
         // Complete the quest (increment completions, award coins)
         const updated = await db.completeQuest(questId, {
@@ -882,6 +887,7 @@ io.on("connection", async (socket) => {
           userId: String(tunnel.recipient_id),
           hotspotId: tunnel.hotspot_id ? String(tunnel.hotspot_id) : null,
         });
+        console.log("[complete_quest] completeQuest result:", updated ? `OK (${updated.category})` : "NULL - QUEST NOT FOUND");
 
         if (updated) {
           io.emit("quests_updated", await db.getQuests());

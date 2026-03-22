@@ -479,10 +479,12 @@ async function createQuest(title, value = 100, category = DEFAULT_CATEGORY, extr
 
 async function completeQuest(questId, options = {}) {
   const { happinessRating, userId, hotspotId } = options;
+  console.log("[completeQuest] called with questId:", questId, "userId:", userId, "rating:", happinessRating);
   let oid;
   try {
     oid = new ObjectId(questId);
-  } catch {
+  } catch (e) {
+    console.log("[completeQuest] INVALID ObjectId:", questId, e.message);
     return null;
   }
 
@@ -503,7 +505,8 @@ async function completeQuest(questId, options = {}) {
     ],
     { returnDocument: "after" }
   );
-  if (!doc) return null;
+  if (!doc) { console.log("[completeQuest] quest NOT FOUND in DB for id:", questId); return null; }
+  console.log("[completeQuest] quest found:", doc.title || doc._id);
 
   await quests.updateMany(
     { _id: { $ne: oid } },
@@ -561,6 +564,7 @@ async function completeQuest(questId, options = {}) {
   const coinReward = normalizedQuest.coin_reward || 0;
 
   // Record the completion
+  console.log("[completeQuest] recording completion for user:", userId || "anonymous", "category:", completedCategory);
   await recordCompletion({
     questId: oid.toString(),
     userId: userId || "anonymous",
@@ -569,21 +573,28 @@ async function completeQuest(questId, options = {}) {
     coinReward,
     hotspotId: hotspotId || normalizedQuest.hotspot_id || null,
   });
+  console.log("[completeQuest] completion recorded successfully");
 
   // Award JoyCoins to user
   if (userId && userId !== "anonymous" && coinReward > 0) {
     try {
       const userOid = ObjectId.isValid(userId) ? new ObjectId(userId) : null;
+      console.log("[completeQuest] awarding", coinReward, "coins to user:", userId, "validOid:", !!userOid);
       if (userOid) {
-        await db.collection("userTable").updateOne(
+        const coinResult = await db.collection("userTable").updateOne(
           { _id: userOid },
           {
             $inc: { joy_coins: coinReward, total_completions: 1 },
             $set: { streak_last_date: new Date() },
           }
         );
+        console.log("[completeQuest] coin update result:", coinResult.modifiedCount, "docs modified");
       }
-    } catch { /* user not found is non-fatal */ }
+    } catch (coinErr) {
+      console.error("[completeQuest] coin award FAILED:", coinErr);
+    }
+  } else {
+    console.log("[completeQuest] skipping coin award. userId:", userId, "coinReward:", coinReward);
   }
 
   return normalizedQuest;
@@ -602,7 +613,9 @@ async function recordCompletion({ questId, userId, category, happinessRating, co
       : null,
     completed_at: new Date(),
   };
-  await db.collection("completions").insertOne(doc);
+  console.log("[recordCompletion] inserting into completions:", JSON.stringify(doc));
+  const result = await db.collection("completions").insertOne(doc);
+  console.log("[recordCompletion] inserted with _id:", result.insertedId);
   return doc;
 }
 

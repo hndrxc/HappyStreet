@@ -56,6 +56,8 @@ export default function ProfilePage() {
   const recentCompletions = stats?.recent_completions || [];
   const loading = Boolean(userId) && !stats && !statsError;
 
+  console.log("[Profile] render — userId:", userId, "stats:", stats, "joyCoins:", joyCoins, "completions:", totalCompletions, "error:", statsError);
+
   return (
     <div className="page-shell">
       <header className="page-header bg-surface border-b border-border">

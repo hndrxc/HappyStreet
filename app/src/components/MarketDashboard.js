@@ -109,6 +109,8 @@ export default function MarketDashboard() {
         ) / 100
       : 100;
 
+  console.log("[Market] render — stocks:", stocks.length, "loading:", loading, "data:", stocks.map(s => `${s.ticker}=$${s.current_price}`).join(", "));
+
   if (loading) {
     return (
       <div className="page-shell">
