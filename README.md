@@ -53,8 +53,29 @@ Before running this project, you will need to have the following software instal
 ```bash
    mongosh --version
 ```
-## Execution
 
+## **Deploying Server**
+Create an account on Railway.
+
+Connect to your GitHub account and select your cloned repository.
+
+In your new service settings, set the Root Directory to /server.
+
+Set the Build Command to npm start.
+
+## **Deploying Client**
+Create an account or log in to Vercel and import your GitHub repository.
+
+Ensure the framework and root directory (likely /app) are set correctly for your client.
+
+In the deployment settings under Environment Variables, add the following:
+
+    Key: NEXT_PUBLIC_URL
+
+    Value: (Paste the domain URL that Railway just gave you)
+
+Click Deploy.
+## Execution
 
 1. **Clone the repository**
 ```bash
