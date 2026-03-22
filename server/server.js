@@ -8,13 +8,14 @@ const db = require("./db");
 const PORT = process.env.PORT || 3001;
 const MONGODB_URI = process.env.MONGODB_URI;
 const JWT_SECRET = process.env.JWT_SECRET || "dev_secret";
+const CORS_ORIGIN = process.env.CORS_ORIGIN || "*";
 const MAX_JSON_BODY_BYTES = 1024 * 1024; // 1MB
 
 const server = http.createServer(requestHandler);
-const io = new Server(server, { cors: { origin: "*" } });
+const io = new Server(server, { cors: { origin: CORS_ORIGIN } });
 
 function setCorsHeaders(res) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Origin", CORS_ORIGIN);
   res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
 }
