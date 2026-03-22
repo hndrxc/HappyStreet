@@ -234,16 +234,7 @@ io.on("connection", async (socket) => {
     console.error("failed to emit quests_init:", err);
   }
 
-  socket.on("complete_quest", async (questId) => {
-    try {
-      const updated = await db.completeQuest(questId);
-      if (!updated) return;
-      io.emit("quests_updated", await db.getQuests());
-      io.emit("quest_completed", { quest: updated, by: socket.id });
-    } catch (err) {
-      console.error("complete_quest failed:", err);
-    }
-  });
+  
 
 
 socket.on("complete_quest", async ({ questId, userId }) => {
