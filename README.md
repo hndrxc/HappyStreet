@@ -53,7 +53,8 @@ Before running this project, you will need to have the following software instal
 ```bash
    mongosh --version
 ```
-## Executiom
+## Execution
+
 
 1. **Clone the repository**
 ```bash
