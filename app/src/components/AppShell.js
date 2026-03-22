@@ -25,8 +25,8 @@ export default function AppShell({ children }) {
   return (
     <div className="min-h-[100dvh] bg-base">
       <div className="grain-overlay" />
-      <main className="mx-auto flex h-[100dvh] w-full max-w-[1180px] flex-col overflow-hidden pb-16 md:px-4 md:pt-4 md:pb-[88px]">
-        <div className="flex flex-1 flex-col overflow-hidden md:rounded-3xl md:border md:border-border md:bg-surface md:shadow-warm">
+      <main className="mx-auto flex h-[100dvh] w-full flex-col overflow-hidden pb-16 md:px-4 md:pt-4 md:pb-[88px]">
+        <div className="flex flex-1 flex-col min-h-0 overflow-hidden md:rounded-3xl md:border md:border-border md:bg-surface md:shadow-warm">
           {children}
         </div>
       </main>

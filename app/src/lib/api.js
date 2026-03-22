@@ -51,6 +51,17 @@ export async function fetchNearbyQuests({
   return res.json();
 }
 
+export async function createQuest({ title, category }) {
+  if (!BASE_URL) throw new Error("Server URL not configured");
+  const res = await fetch(`${BASE_URL}/quests`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title, category }),
+  });
+  if (!res.ok) throw new Error(`Failed to create quest: ${res.status}`);
+  return res.json();
+}
+
 export async function fetchAllQuests() {
   if (!BASE_URL) return [];
   const res = await fetch(`${BASE_URL}/quests`);

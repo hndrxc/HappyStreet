@@ -2,10 +2,29 @@
 
 import { useState, useEffect } from "react";
 import { CloseIcon } from "./icons";
+import { createQuest } from "@/lib/api";
 
-export default function PostNeedSheet({ isOpen, onClose, onSubmitNeed }) {
-  const [appearance, setAppearance] = useState("");
-  const [location, setLocation] = useState("");
+const CATEGORIES = [
+  "kindness",
+  "mindfulness",
+  "social connection",
+  "physical activity",
+  "creativity",
+  "gratitude",
+];
+
+const CATEGORY_COLORS = {
+  kindness: "#E8A020",
+  mindfulness: "#8B5CF6",
+  "social connection": "#3B82F6",
+  "physical activity": "#10B981",
+  creativity: "#F472B6",
+  gratitude: "#F59E0B",
+};
+
+export default function PostNeedSheet({ isOpen, onClose }) {
+  const [title, setTitle] = useState("");
+  const [category, setCategory] = useState("kindness");
   const [isAnimating, setIsAnimating] = useState(false);
   const [shouldRender, setShouldRender] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -30,26 +49,16 @@ export default function PostNeedSheet({ isOpen, onClose, onSubmitNeed }) {
     e.preventDefault();
     if (isSubmitting) return;
 
-    const payload = {
-      appearance: appearance.trim(),
-      location: location.trim(),
-    };
-
     setSubmitError("");
     setIsSubmitting(true);
 
     try {
-      if (onSubmitNeed) {
-        await onSubmitNeed(payload);
-      } else {
-        // Keep frontend usable until backend endpoint is added.
-        await new Promise((resolve) => setTimeout(resolve, 150));
-      }
-      setAppearance("");
-      setLocation("");
+      await createQuest({ title: title.trim(), category });
+      setTitle("");
+      setCategory("kindness");
       onClose();
     } catch {
-      setSubmitError("Could not post this need right now. Please try again.");
+      setSubmitError("Could not post quest right now. Please try again.");
     } finally {
       setIsSubmitting(false);
     }
@@ -60,70 +69,81 @@ export default function PostNeedSheet({ isOpen, onClose, onSubmitNeed }) {
   return (
     <>
       {/* Backdrop */}
-      <div 
+      <div
         className={`fixed inset-0 bg-text-primary/30 z-[1200] transition-opacity duration-300 ${
           isAnimating ? "opacity-100" : "opacity-0"
         }`}
         onClick={onClose}
       />
-      
-      {/* Sheet */}
-      <div 
-        className={`fixed bottom-0 left-0 right-0 z-[1201] transition-transform duration-300 ease-out ${
-          isAnimating ? "translate-y-0" : "translate-y-full"
+
+      {/* Modal */}
+      <div
+        className={`fixed inset-0 z-[1201] flex items-center justify-center p-4 transition-all duration-300 ease-out ${
+          isAnimating ? "opacity-100 scale-100" : "opacity-0 scale-95"
         }`}
       >
-        <div className="max-w-[680px] mx-auto bg-surface rounded-t-3xl shadow-warm border-t border-border">
-          {/* Handle */}
-          <div className="flex justify-center pt-3 pb-2">
-            <div className="w-10 h-1 rounded-full bg-border-warm" />
-          </div>
-          
+        <div className="post-need-box w-full max-w-md bg-surface rounded-3xl shadow-warm border border-border">
           {/* Header */}
-          <div className="flex items-center justify-between px-5 pb-4">
-            <h2 className="font-pixel text-[12px] text-text-primary">Post a Need</h2>
-            <button 
+          <div className="post-need-header flex items-center justify-between">
+            <h2 className="font-pixel text-[12px] text-text-primary">Post a Quest</h2>
+            <button
               onClick={onClose}
-              className="p-2 -mr-2 text-text-muted hover:text-text-primary transition-colors"
+              className="text-text-muted hover:text-text-primary transition-colors"
             >
               <CloseIcon className="w-5 h-5" />
             </button>
           </div>
 
           {/* Form */}
-          <form onSubmit={handleSubmit} className="px-5 pb-8 space-y-4">
+          <form onSubmit={handleSubmit} className="post-need-form">
+            {/* Title */}
             <div>
-              <label className="block text-sm text-text-secondary mb-2">
-                What do you look like?
+              <label className="post-need-label text-sm text-text-secondary">
+                Describe your quest
               </label>
               <input
                 type="text"
-                value={appearance}
-                onChange={(e) => setAppearance(e.target.value)}
-                placeholder="e.g., Red jacket, glasses"
-                className="w-full px-4 py-3 bg-base rounded-xl border border-border text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent transition-colors"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="e.g., Buy a coffee for someone studying alone"
+                className="post-need-input bg-base rounded-xl border border-border text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent transition-colors"
               />
             </div>
-            
+
+            {/* Category picker */}
             <div>
-              <label className="block text-sm text-text-secondary mb-2">
-                Where are you?
+              <label className="post-need-label text-sm text-text-secondary">
+                Category
               </label>
-              <input
-                type="text"
-                value={location}
-                onChange={(e) => setLocation(e.target.value)}
-                placeholder="e.g., Near the fountain"
-                className="w-full px-4 py-3 bg-base rounded-xl border border-border text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent transition-colors"
-              />
+              <div className="post-need-pills">
+                {CATEGORIES.map((cat) => {
+                  const isActive = category === cat;
+                  const color = CATEGORY_COLORS[cat];
+                  return (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => setCategory(cat)}
+                      className="post-need-pill rounded-full text-xs font-medium capitalize transition-all"
+                      style={{
+                        backgroundColor: isActive ? color : color + "15",
+                        color: isActive ? "#fff" : color,
+                        border: `1.5px solid ${isActive ? color : "transparent"}`,
+                      }}
+                    >
+                      {cat}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
             <button
               type="submit"
-              disabled={!appearance.trim() || !location.trim() || isSubmitting}
-              className="w-full py-4 bg-accent text-text-on-accent font-semibold rounded-xl shadow-warm transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={!title.trim() || isSubmitting}
+              className="post-need-submit bg-accent text-text-on-accent font-semibold rounded-xl shadow-warm transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isSubmitting ? "Submitting..." : "Submit Need"}
+              {isSubmitting ? "Posting..." : "Post Quest"}
             </button>
 
             {submitError && (

@@ -165,7 +165,7 @@ export default function HotspotMapInner({ onSelectHotspot }) {
   };
 
   return (
-    <div className="flex-1 flex flex-col relative">
+    <div className="flex-1 flex flex-col min-h-0 relative overflow-hidden">
       {/* Location error banner */}
       {error && (
         <div className="absolute top-0 left-0 right-0 z-[1001] bg-accent/90 text-text-on-accent text-xs text-center py-2 px-4">
@@ -174,7 +174,8 @@ export default function HotspotMapInner({ onSelectHotspot }) {
       )}
 
       {/* Map */}
-      <div className="flex-1 relative">
+      <div className="flex-1 min-h-0 relative overflow-hidden">
+        <div className="absolute inset-0">
         <MapContainer
           center={userPos}
           zoom={DEFAULT_ZOOM}
@@ -267,6 +268,7 @@ export default function HotspotMapInner({ onSelectHotspot }) {
             );
           })}
         </MapContainer>
+        </div>
       </div>
 
       {/* Bottom sheet for selected hotspot */}

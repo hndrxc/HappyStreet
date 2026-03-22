@@ -17,8 +17,8 @@ export default function BottomTabBar() {
   const activePath = pathname === "/" ? "/hotspot" : pathname;
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 pb-[env(safe-area-inset-bottom)] md:bottom-4 md:px-4">
-      <div className="mx-auto flex h-16 w-full max-w-[1180px] items-center justify-around border-t border-border bg-surface px-2 md:rounded-2xl md:border md:shadow-warm">
+    <nav className="fixed bottom-0 left-0 right-0 z-[1000] pb-[env(safe-area-inset-bottom)] md:bottom-4 md:px-4">
+      <div className="mx-auto flex h-16 w-full max-w-md items-center justify-around border-t border-border bg-surface px-2 md:rounded-2xl md:border md:shadow-warm">
         {tabs.map(({ href, label, Icon }) => {
           const isActive = activePath === href || activePath.startsWith(`${href}/`);
           return (
