@@ -236,6 +236,10 @@ io.on("connection", async (socket) => {
 
   
 
+socket.on("update_location", async ({ lat, lon }) => {
+  const hotspots = await db.getNearbyHotspots(lat, lon);
+  socket.emit("hotspots_init", hotspots);
+});
 
 socket.on("complete_quest", async ({ questId, userId }) => {
   try {
