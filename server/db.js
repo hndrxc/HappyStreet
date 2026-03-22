@@ -433,12 +433,23 @@ async function updateTunnelStatus(tunnelId, status, extra = {}) {
   );
 }
 
+async function getNearbyHotspots(lat, lon, radius = 2000) {
+  return await db.collection("hotspotTable").find({
+    location: {
+      $nearSphere: {
+        $geometry: { type: "Point", coordinates: [lon, lat] },
+        $maxDistance: radius
+      }
+    }
+  }).toArray();
+}
+
 module.exports = {
   DEFAULT_CATEGORY,
   isValidCategory,
   connect,
   getQuests, createQuest, completeQuest, getNearbyQuests,
   getUser, createUser, updateUserLocation, updateUserBalance,
-  getHotspots, createHotspot, getHotspotById,
+  getHotspots, createHotspot, getHotspotById, getNearbyHotspots,
   getTunnel, createTunnel, updateTunnelStatus,
 };

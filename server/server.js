@@ -130,7 +130,18 @@ async function requestHandler(req, res) {
         
         case "/hotspots/nearby":
             if (req.method === "GET"){
+                const lat = parseFloat(url.searchParams.get("lat"));
+                const lon = parseFloat(url.searchParams.get("lon"));
+                const radius = parseFloat(url.searchParams.get("radius")) || 2000;
 
+                if (isNaN(lat) || isNaN(lon)) {
+                    sendJson(res, 400, { error: "lat and lon query params required" });
+                    return;
+                }
+
+                const hotspots = await db.getNearbyHotspots(lat, lon, radius);
+                sendJson(res, 200, hotspots);
+                return;
             }
             if (req.method === "GET"){
                 
