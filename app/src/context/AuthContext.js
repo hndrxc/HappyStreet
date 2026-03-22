@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useState, useEffect } from "react";
-import { currentUser } from "@/lib/mockData";
+import { authLogin, authRegister, authMe } from "@/lib/api";
 
 const AuthContext = createContext(null);
 
@@ -10,59 +10,41 @@ export function AuthProvider({ children }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Check for stored auth on mount
-    const storedUser = localStorage.getItem("happystreet_user");
-    if (storedUser) {
-      setUser(JSON.parse(storedUser));
+    const token = localStorage.getItem("happystreet_token");
+    if (token) {
+      authMe(token).then((userData) => {
+        if (userData) setUser(userData);
+        else localStorage.removeItem("happystreet_token");
+      }).finally(() => setIsLoading(false));
+    } else {
+      setIsLoading(false);
     }
-    setIsLoading(false);
   }, []);
 
-  const login = (username, password) => {
-    // Mock login - in real app, validate against API
-    // For demo, accept any non-empty username/password
-    if (!username.trim() || !password.trim()) {
-      return { success: false, error: "Username and password required" };
+  const login = async (username, password) => {
+    try {
+      const { token, user: userData } = await authLogin(username, password);
+      localStorage.setItem("happystreet_token", token);
+      setUser(userData);
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
     }
-
-    const userData = {
-      ...currentUser,
-      username: username.toLowerCase(),
-    };
-
-    localStorage.setItem("happystreet_user", JSON.stringify(userData));
-    setUser(userData);
-    return { success: true };
   };
 
-  const register = (username, password) => {
-    // Mock register - in real app, create account via API
-    if (!username.trim() || !password.trim()) {
-      return { success: false, error: "Username and password required" };
+  const register = async (username, password) => {
+    try {
+      const { token, user: userData } = await authRegister(username, password);
+      localStorage.setItem("happystreet_token", token);
+      setUser(userData);
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
     }
-
-    if (username.length < 3) {
-      return { success: false, error: "Username must be at least 3 characters" };
-    }
-
-    if (password.length < 4) {
-      return { success: false, error: "Password must be at least 4 characters" };
-    }
-
-    const userData = {
-      ...currentUser,
-      id: `user_${Date.now()}`,
-      username: username.toLowerCase(),
-      balance: 0,
-    };
-
-    localStorage.setItem("happystreet_user", JSON.stringify(userData));
-    setUser(userData);
-    return { success: true };
   };
 
   const logout = () => {
-    localStorage.removeItem("happystreet_user");
+    localStorage.removeItem("happystreet_token");
     setUser(null);
   };
 

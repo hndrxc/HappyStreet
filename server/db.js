@@ -492,6 +492,10 @@ async function getUser(userId) {
   return await db.collection("userTable").findOne({ _id: new ObjectId(userId) });
 }
 
+async function getUserByUsername(username) {
+  return await db.collection("userTable").findOne({ username });
+}
+
 async function createUser(username, pword_hash) {
   const result = await db.collection("userTable").insertOne({ username, pword_hash, balance: 100, lat: null, lon: null, collections: [] });
   return await db.collection("userTable").findOne({ _id: result.insertedId });
@@ -609,13 +613,24 @@ async function getNearbyHotspots(lat, lon, radius = 2000) {
     .filter(Boolean)
     .sort((a, b) => a.distance_meters - b.distance_meters);
 }
+async function removeRecipientFromQueue(questId, userId) {
+  await db.collection("hotspotTable").updateMany(
+    { "questq_ids.quest_id": questId },
+    { $pull: { "questq_ids.$[elem].recipient_ids": userId } },
+    { arrayFilters: [{ "elem.quest_id": questId }] }
+  );
 
+  await db.collection("hotspotTable").updateMany(
+    { "questq_ids": { $elemMatch: { "quest_id": questId, "recipient_ids": { $size: 0 } } } },
+    { $pull: { "questq_ids": { quest_id: questId, recipient_ids: { $size: 0 } } } }
+  );
+}
 module.exports = {
   DEFAULT_CATEGORY,
   isValidCategory,
   connect,
   getQuests, createQuest, completeQuest, getNearbyQuests,
-  getUser, createUser, updateUserLocation, updateUserBalance,
-  getHotspots, createHotspot, getHotspotById, getNearbyHotspots,
+  getUser, getUserByUsername, createUser, updateUserLocation, updateUserBalance,
+  getHotspots, createHotspot, getHotspotById, getNearbyHotspots, removeRecipientFromQueue,
   getTunnel, createTunnel, updateTunnelStatus,
 };

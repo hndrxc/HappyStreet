@@ -1,10 +1,13 @@
 require("dotenv").config();
 const http = require("http");
 const { Server } = require("socket.io");
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
 const db = require("./db");
 
 const PORT = process.env.PORT || 3001;
 const MONGODB_URI = process.env.MONGODB_URI;
+const JWT_SECRET = process.env.JWT_SECRET || "dev_secret";
 const MAX_JSON_BODY_BYTES = 1024 * 1024; // 1MB
 
 const server = http.createServer(requestHandler);
@@ -13,7 +16,14 @@ const io = new Server(server, { cors: { origin: "*" } });
 function setCorsHeaders(res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+}
+
+function verifyToken(req) {
+  const header = req.headers["authorization"] || "";
+  const token = header.startsWith("Bearer ") ? header.slice(7) : null;
+  if (!token) return null;
+  try { return jwt.verify(token, JWT_SECRET); } catch { return null; }
 }
 
 function sendJson(res, statusCode, payload) {
@@ -73,24 +83,94 @@ async function requestHandler(req, res) {
 
   try {
     const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
-    if (url.pathname === "/quests") {
-      if (req.method === "GET") {
-        const quests = await db.getQuests();
-        sendJson(res, 200, quests);
-        return;
-      }
+    
+    //giant pathname switch
+    switch (url.pathname){
 
-      if (req.method === "POST") {
-        let body;
-        try {
-          body = await parseJsonBody(req);
-        } catch (err) {
-          if (err && err.statusCode) {
-            sendJson(res, err.statusCode, { error: err.message });
+        case "/auth/register": {
+            if (req.method === "POST") {
+                let body;
+                try { body = await parseJsonBody(req); } catch (err) {
+                    if (err && err.statusCode) { sendJson(res, err.statusCode, { error: err.message }); return; }
+                    throw err;
+                }
+                const username = typeof body.username === "string" ? body.username.trim().toLowerCase() : "";
+                const password = typeof body.password === "string" ? body.password : "";
+                if (username.length < 3) { sendJson(res, 400, { error: "Username must be at least 3 characters" }); return; }
+                if (password.length < 4) { sendJson(res, 400, { error: "Password must be at least 4 characters" }); return; }
+                const existing = await db.getUserByUsername(username);
+                if (existing) { sendJson(res, 409, { error: "Username already taken" }); return; }
+                const hash = await bcrypt.hash(password, 10);
+                const newUser = await db.createUser(username, hash);
+                const token = jwt.sign({ userId: newUser._id.toString(), username: newUser.username }, JWT_SECRET, { expiresIn: "30d" });
+                sendJson(res, 201, { token, user: { id: newUser._id.toString(), username: newUser.username, balance: newUser.balance } });
+                return;
+            }
+            sendJson(res, 405, { error: "Method not allowed" });
             return;
-          }
-          throw err;
         }
+
+        case "/auth/login": {
+            if (req.method === "POST") {
+                let body;
+                try { body = await parseJsonBody(req); } catch (err) {
+                    if (err && err.statusCode) { sendJson(res, err.statusCode, { error: err.message }); return; }
+                    throw err;
+                }
+                const username = typeof body.username === "string" ? body.username.trim().toLowerCase() : "";
+                const password = typeof body.password === "string" ? body.password : "";
+                if (!username || !password) { sendJson(res, 400, { error: "Username and password required" }); return; }
+                const user = await db.getUserByUsername(username);
+                if (!user) { sendJson(res, 401, { error: "Invalid username or password" }); return; }
+                const match = await bcrypt.compare(password, user.pword_hash);
+                if (!match) { sendJson(res, 401, { error: "Invalid username or password" }); return; }
+                const token = jwt.sign({ userId: user._id.toString(), username: user.username }, JWT_SECRET, { expiresIn: "30d" });
+                sendJson(res, 200, { token, user: { id: user._id.toString(), username: user.username, balance: user.balance } });
+                return;
+            }
+            sendJson(res, 405, { error: "Method not allowed" });
+            return;
+        }
+
+        case "/auth/me": {
+            if (req.method === "GET") {
+                const payload = verifyToken(req);
+                if (!payload) { sendJson(res, 401, { error: "Unauthorized" }); return; }
+                const user = await db.getUser(payload.userId);
+                if (!user) { sendJson(res, 404, { error: "User not found" }); return; }
+                sendJson(res, 200, { id: user._id.toString(), username: user.username, balance: user.balance });
+                return;
+            }
+            sendJson(res, 405, { error: "Method not allowed" });
+            return;
+        }
+
+        case "/auth/logout":
+            if (req.method === "POST") {
+                sendJson(res, 200, { success: true });
+                return;
+            }
+            sendJson(res, 405, { error: "Method not allowed" });
+            return;
+
+        case "/quests":
+            if (req.method==="GET"){
+            const quests = await db.getQuests();
+            sendJson(res, 200, quests);
+            return;
+
+            }
+            if (req.method==="POST"){
+                let body;
+                try {
+                    body = await parseJsonBody(req);
+                } catch (err) {
+                    if (err && err.statusCode) {
+                    sendJson(res, err.statusCode, { error: err.message });
+                    return;
+                    }
+                    throw err;
+                }
 
         const title = typeof body.title === "string" ? body.title.trim() : "";
         if (!title) {
@@ -219,23 +299,51 @@ io.on("connection", async (socket) => {
     console.error("failed to emit quests_init:", err);
   }
 
-  socket.on("complete_quest", async (payload) => {
-    try {
-      const questId = typeof payload === "string" ? payload : payload?.questId;
-      if (!questId) return;
-      const updated = await db.completeQuest(questId);
-      if (!updated) return;
-      io.emit("quests_updated", await db.getQuests());
-      io.emit("quest_completed", { quest: updated, by: socket.id });
-    } catch (err) {
-      console.error("complete_quest failed:", err);
+  
+
+socket.on("update_location", async ({ lat, lon }) => {
+  const hotspots = await db.getNearbyHotspots(lat, lon);
+  socket.emit("hotspots_init", hotspots);
+});
+
+socket.on("complete_quest", async ({ questId, userId }) => {
+  try {
+    const updated = await db.completeQuest(questId);
+    if (!updated) return;
+
+    // Step 3 first — query before mutation
+    const affectedHotspots = await db.collection("hotspotTable").find(
+      { "questq_ids.quest_id": questId }
+    ).toArray();
+
+    
+    await db.removeRecipientFromQueue(questId, userId);
+
+    // Emit hotspot_updated with post-mutation state
+    for (const hotspot of affectedHotspots) {
+      const updated = await db.getHotspotById(hotspot._id);
+      io.emit("hotspot_updated", {
+        hotspot_id: hotspot._id,
+        name: hotspot.name,
+        questq_ids: updated.questq_ids
+      });
     }
-  });
+
+    
+    io.emit("quest_completed", { quest: updated, by: userId });
+
+  } catch (err) {
+    console.error("complete_quest failed:", err);
+  }
+});
+
+
 
   socket.on("disconnect", () => {
     console.log("client disconnected:", socket.id);
   });
 });
+
 
 // --- Start ---
 if (!MONGODB_URI) {

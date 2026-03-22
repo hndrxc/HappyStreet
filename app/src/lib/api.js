@@ -70,3 +70,33 @@ export async function fetchAllQuests() {
   if (!res.ok) throw new Error(`Failed to fetch quests: ${res.status}`);
   return res.json();
 }
+
+export async function authRegister(username, password) {
+  const res = await fetch(`${BASE_URL}/auth/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, password }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || "Register failed");
+  return data; // { token, user }
+}
+
+export async function authLogin(username, password) {
+  const res = await fetch(`${BASE_URL}/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, password }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || "Login failed");
+  return data; // { token, user }
+}
+
+export async function authMe(token) {
+  const res = await fetch(`${BASE_URL}/auth/me`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) return null;
+  return res.json(); // { id, username, balance }
+}

@@ -20,8 +20,8 @@ export default function LoginPage() {
     await new Promise((r) => setTimeout(r, 300));
 
     const result = isRegister
-      ? register(username, password)
-      : login(username, password);
+      ? await register(username, password)
+      : await login(username, password);
 
     if (!result.success) {
       setError(result.error);
