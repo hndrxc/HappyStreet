@@ -400,17 +400,48 @@ async function getNearbyQuests({ lat, lon, radius = 1000, category, difficulty, 
   if (difficulty) baseFilter.difficulty_tier = difficulty;
 
   if (hotspotId) {
+    const hotspot = await getHotspotById(hotspotId);
+    const hotspotQuestIds = Array.isArray(hotspot?.quest_ids) ? hotspot.quest_ids.map(String) : [];
+
     const hotspotOr = [{ hotspot_id: hotspotId }];
-    if (ObjectId.isValid(hotspotId)) {
-      hotspotOr.push({ hotspot_id: new ObjectId(hotspotId) });
+    if (ObjectId.isValid(String(hotspotId))) {
+      hotspotOr.push({ hotspot_id: new ObjectId(String(hotspotId)) });
     }
 
-    const hotspotQuests = await quests
-      .find({ ...baseFilter, $or: hotspotOr })
-      .limit(safeLimit)
-      .toArray();
+    const byHotspotField = await quests.find({ ...baseFilter, $or: hotspotOr }).toArray();
 
-    return hotspotQuests.map((doc) => ({
+    let byHotspotQuestIds = [];
+    if (hotspotQuestIds.length > 0) {
+      const objectQuestIds = hotspotQuestIds
+        .filter((id) => ObjectId.isValid(id))
+        .map((id) => new ObjectId(id));
+
+      const questIdOr = [];
+      if (objectQuestIds.length > 0) questIdOr.push({ _id: { $in: objectQuestIds } });
+      questIdOr.push({ id: { $in: hotspotQuestIds } });
+
+      byHotspotQuestIds = await quests.find({ ...baseFilter, $or: questIdOr }).toArray();
+    }
+
+    const mergedById = new Map();
+    for (const doc of byHotspotField) {
+      mergedById.set(doc._id.toString(), doc);
+    }
+    for (const doc of byHotspotQuestIds) {
+      mergedById.set(doc._id.toString(), doc);
+    }
+
+    const orderedDocs = Array.from(mergedById.values());
+    if (hotspotQuestIds.length > 0) {
+      const questIdRank = new Map(hotspotQuestIds.map((id, index) => [String(id), index]));
+      orderedDocs.sort((a, b) => {
+        const aRank = questIdRank.has(a._id.toString()) ? questIdRank.get(a._id.toString()) : Number.MAX_SAFE_INTEGER;
+        const bRank = questIdRank.has(b._id.toString()) ? questIdRank.get(b._id.toString()) : Number.MAX_SAFE_INTEGER;
+        return aRank - bRank;
+      });
+    }
+
+    return orderedDocs.slice(0, safeLimit).map((doc) => ({
       ...normalizeQuest(doc),
       distance_meters: null,
     }));
@@ -594,7 +625,7 @@ async function updateTunnelStatus(tunnelId, status, extra = {}) {
   );
 }
 
-async function getNearbyHotspots(lat, lon, radius = 2000) {
+async function getNearbyHotspots(lat, lon, radius = 10000) {
   const hotspots = await db.collection("hotspotTable").find().toArray();
   const normalized = hotspots.map(normalizeHotspot).filter(Boolean);
 
@@ -613,24 +644,92 @@ async function getNearbyHotspots(lat, lon, radius = 2000) {
     .filter(Boolean)
     .sort((a, b) => a.distance_meters - b.distance_meters);
 }
-async function removeRecipientFromQueue(questId, userId) {
-  await db.collection("hotspotTable").updateMany(
-    { "questq_ids.quest_id": questId },
-    { $pull: { "questq_ids.$[elem].recipient_ids": userId } },
-    { arrayFilters: [{ "elem.quest_id": questId }] }
+
+async function acquireQuestRecipientForCompletion(questId, requestedRecipientId) {
+  const hotspots = db.collection("hotspotTable");
+  const allHotspots = await hotspots.find().toArray();
+  const questIdText = String(questId);
+  const requestedText = requestedRecipientId == null ? null : String(requestedRecipientId);
+
+  for (const hotspot of allHotspots) {
+    const queueEntries = Array.isArray(hotspot.questq_ids) ? hotspot.questq_ids : [];
+    for (const entry of queueEntries) {
+      if (!entry || String(entry.quest_id) !== questIdText) continue;
+      const recipients = Array.isArray(entry.recipient_ids) ? entry.recipient_ids : [];
+      if (recipients.length === 0) continue;
+
+      let recipientValue = recipients[0];
+      if (requestedText != null) {
+        const matched = recipients.find((candidate) => String(candidate) === requestedText);
+        if (matched == null) continue;
+        recipientValue = matched;
+      }
+
+      const dequeue = await hotspots.updateOne(
+        { _id: hotspot._id },
+        { $pull: { "questq_ids.$[q].recipient_ids": recipientValue } },
+        { arrayFilters: [{ "q.quest_id": entry.quest_id }] }
+      );
+
+      if (dequeue.modifiedCount === 0) continue;
+
+      await hotspots.updateOne(
+        { _id: hotspot._id },
+        { $pull: { questq_ids: { quest_id: entry.quest_id, recipient_ids: [] } } }
+      );
+
+      const refreshed = await hotspots.findOne({ _id: hotspot._id });
+      return {
+        hotspot: normalizeHotspot(refreshed),
+        hotspot_id: hotspot._id.toString(),
+        recipient_id: recipientValue,
+        quest_key: entry.quest_id,
+      };
+    }
+  }
+
+  return null;
+}
+
+async function requeueQuestRecipient(hotspotId, questKey, recipientId) {
+  const hotspots = db.collection("hotspotTable");
+  const targetId = ObjectId.isValid(String(hotspotId)) ? new ObjectId(String(hotspotId)) : hotspotId;
+
+  const restored = await hotspots.updateOne(
+    { _id: targetId },
+    {
+      $push: {
+        "questq_ids.$[q].recipient_ids": {
+          $each: [recipientId],
+          $position: 0,
+        },
+      },
+    },
+    { arrayFilters: [{ "q.quest_id": questKey }] }
   );
 
-  await db.collection("hotspotTable").updateMany(
-    { "questq_ids": { $elemMatch: { "quest_id": questId, "recipient_ids": { $size: 0 } } } },
-    { $pull: { "questq_ids": { quest_id: questId, recipient_ids: { $size: 0 } } } }
+  if (restored.modifiedCount > 0) return;
+
+  await hotspots.updateOne(
+    { _id: targetId },
+    {
+      $push: {
+        questq_ids: {
+          quest_id: questKey,
+          recipient_ids: [recipientId],
+        },
+      },
+    }
   );
 }
+
 module.exports = {
   DEFAULT_CATEGORY,
   isValidCategory,
   connect,
   getQuests, createQuest, completeQuest, getNearbyQuests,
   getUser, getUserByUsername, createUser, updateUserLocation, updateUserBalance,
-  getHotspots, createHotspot, getHotspotById, getNearbyHotspots, removeRecipientFromQueue,
+  getHotspots, createHotspot, getHotspotById, getNearbyHotspots,
+  acquireQuestRecipientForCompletion, requeueQuestRecipient,
   getTunnel, createTunnel, updateTunnelStatus,
 };
