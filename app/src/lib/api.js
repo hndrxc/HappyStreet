@@ -12,8 +12,9 @@ export function formatDistance(meters) {
   return `${(meters / 1000).toFixed(1)}km away`;
 }
 
-export async function fetchNearbyHotspots(lat, lon, radius = 2000) {
+export async function fetchNearbyHotspots(lat, lon, radius = 10000) {
   if (!BASE_URL) return [];
+  console.debug("[API client] GET /hotspots/nearby", { lat, lon, radius });
   const res = await fetch(
     `${BASE_URL}/hotspots/nearby?lat=${lat}&lon=${lon}&radius=${radius}`
   );
@@ -23,6 +24,7 @@ export async function fetchNearbyHotspots(lat, lon, radius = 2000) {
 
 export async function fetchHotspotById(id) {
   if (!BASE_URL) return null;
+  console.debug("[API client] GET /hotspots/:id", { id });
   const res = await fetch(`${BASE_URL}/hotspots/${id}`);
   if (!res.ok) throw new Error(`Failed to fetch hotspot: ${res.status}`);
   return res.json();

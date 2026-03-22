@@ -123,22 +123,45 @@ export default function HotspotMapInner({ onSelectHotspot, focusHotspotId }) {
   useEffect(() => {
     if (!location) return;
 
+    console.debug("[HotspotMap] location:update", {
+      lat: location.lat,
+      lon: location.lon,
+      accuracy: location.accuracy,
+    });
+
     const lastPos = lastFetchPosRef.current;
     if (lastPos) {
       const dist = Math.sqrt(
         Math.pow((location.lat - lastPos.lat) * 111320, 2) +
         Math.pow((location.lon - lastPos.lon) * 111320 * Math.cos(location.lat * Math.PI / 180), 2)
       );
-      if (dist < 200) return;
+      if (dist < 200) {
+        console.debug("[HotspotMap] skip fetchNearbyHotspots (movement < 200m)", {
+          movedMeters: Math.round(dist),
+        });
+        return;
+      }
     }
 
     lastFetchPosRef.current = { lat: location.lat, lon: location.lon };
 
-    fetchNearbyHotspots(location.lat, location.lon, 2000)
+    console.debug("[HotspotMap] fetchNearbyHotspots:start", {
+      lat: location.lat,
+      lon: location.lon,
+      radius: 10000,
+    });
+
+    fetchNearbyHotspots(location.lat, location.lon, 10000)
       .then((data) => {
+        console.debug("[HotspotMap] fetchNearbyHotspots:success", {
+          count: Array.isArray(data) ? data.length : 0,
+        });
         setHotspotsList(Array.isArray(data) ? data : []);
       })
-      .catch(() => {
+      .catch((err) => {
+        console.debug("[HotspotMap] fetchNearbyHotspots:error", {
+          message: err?.message || "unknown",
+        });
         setHotspotsList([]);
       });
   }, [location]);
