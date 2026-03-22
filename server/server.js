@@ -720,15 +720,22 @@ io.on("connection", async (socket) => {
         return;
       }
 
-      const dequeued = await db.dequeueQuestRecipient(hotspotId, questId);
-      if (!dequeued) {
+      // Peek first to prevent self-acceptance without losing the queue entry
+      const peeked = await db.peekQuestRecipient(hotspotId, questId);
+      if (!peeked) {
         socket.emit("quest_accept_error", { error: "No one is waiting for this quest" });
         return;
       }
 
-      // Prevent accepting your own request
-      if (String(dequeued.recipientId) === String(userId)) {
-        socket.emit("quest_accept_error", { error: "You cannot accept your own request" });
+      // Prevent accepting your own request (check BEFORE dequeuing)
+      if (String(peeked.recipientId) === String(userId)) {
+        socket.emit("quest_accept_error", { error: "You cannot accept your own quest!" });
+        return;
+      }
+
+      const dequeued = await db.dequeueQuestRecipient(hotspotId, questId);
+      if (!dequeued) {
+        socket.emit("quest_accept_error", { error: "No one is waiting for this quest" });
         return;
       }
 
@@ -741,22 +748,26 @@ io.on("connection", async (socket) => {
           offerer_id: String(userId),
         });
 
-        // Auto-send the requester's description as the first message
-        if (dequeued.description) {
-          const autoMsg = await db.createMessage(tunnelId, dequeued.recipientId, dequeued.description);
-          emitToUser(dequeued.recipientId, "new_message", { conversationId: tunnelId, message: autoMsg });
-          emitToUser(userId, "new_message", { conversationId: tunnelId, message: autoMsg });
-        }
-
-        // Look up quest title for notification
+        // Look up quest title and requester username for the initial message
         let questTitle = "Quest";
+        let requesterName = "Someone";
         try {
           const { ObjectId } = require("mongodb");
           if (ObjectId.isValid(String(questId))) {
             const questDoc = await db.getDb().collection("questTable").findOne({ _id: new ObjectId(String(questId)) });
             if (questDoc) questTitle = questDoc.title;
           }
+          const requesterDoc = await db.getUser(dequeued.recipientId);
+          if (requesterDoc?.username) requesterName = requesterDoc.username;
         } catch { /* non-fatal */ }
+
+        // Always send an initial message so conversations never start blank
+        const firstMessageText = dequeued.description
+          ? dequeued.description
+          : `${requesterName} requested help with: ${questTitle}`;
+        const autoMsg = await db.createMessage(tunnelId, dequeued.recipientId, firstMessageText);
+        emitToUser(dequeued.recipientId, "new_message", { conversationId: tunnelId, message: autoMsg });
+        emitToUser(userId, "new_message", { conversationId: tunnelId, message: autoMsg });
 
         // Notify both users about the new conversation
         const tunnelData = { tunnelId, questId, questTitle, recipientId: dequeued.recipientId, offererId: String(userId) };

@@ -126,7 +126,7 @@ export default function ChatView({
   return (
     <div className="page-shell bg-base">
       {/* Header */}
-      <header className="page-header bg-surface border-b border-border flex items-center gap-2">
+      <header className="page-header bg-surface border-b border-border flex items-center gap-2 shrink-0">
         <button
           onClick={onBack}
           className="w-9 h-9 flex items-center justify-center rounded-xl text-text-secondary hover:text-text-primary hover:bg-base transition-colors"
@@ -151,7 +151,7 @@ export default function ChatView({
       </header>
 
       {isLocked && (
-        <div className="px-4 py-3 bg-base-darker border-b border-border flex items-center justify-center gap-2 text-text-muted">
+        <div className="px-4 py-3 bg-base-darker border-b border-border flex items-center justify-center gap-2 text-text-muted shrink-0">
           <LockIcon className="w-4 h-4" />
           <span className="text-sm">This conversation is complete</span>
         </div>
@@ -198,7 +198,7 @@ export default function ChatView({
       {!isLocked && (
         <form
           onSubmit={handleSend}
-          className="page-header bg-surface border-t border-border flex items-center gap-3"
+          className="page-header bg-surface border-t border-border flex items-center gap-3 shrink-0"
         >
           <input
             ref={inputRef}

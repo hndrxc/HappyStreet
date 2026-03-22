@@ -37,15 +37,23 @@ export default function MessagesPage() {
     return () => socket.off("tunnel_created", onTunnelCreated);
   }, [socket, loadConversations]);
 
-  // Update last message in conversation list when a new message arrives
+  // Update last message and unread count in conversation list when a new message arrives
   useEffect(() => {
     if (!socket) return;
     const onNewMessage = ({ conversationId, message }) => {
       setConversations((prev) => {
+        const isViewingThis = selectedConversation?.id === conversationId;
         const updateList = (list) =>
           list.map((conv) =>
             conv.id === conversationId
-              ? { ...conv, lastMessage: message.text, timestamp: message.timestamp }
+              ? {
+                  ...conv,
+                  lastMessage: message.text,
+                  timestamp: message.timestamp,
+                  unreadCount: isViewingThis
+                    ? conv.unreadCount
+                    : (conv.unreadCount || 0) + 1,
+                }
               : conv
           );
         return {
@@ -56,7 +64,7 @@ export default function MessagesPage() {
     };
     socket.on("new_message", onNewMessage);
     return () => socket.off("new_message", onNewMessage);
-  }, [socket]);
+  }, [socket, selectedConversation?.id]);
 
   useEffect(() => {
     if (!selectedConversation || !token) return;
@@ -148,7 +156,8 @@ export default function MessagesPage() {
 }
 
 function ConversationItem({ conversation, onClick }) {
-  const { questTitle, otherUser, lastMessage, timestamp, isLocked } = conversation;
+  const { questTitle, otherUser, lastMessage, timestamp, isLocked, unreadCount } = conversation;
+  const hasUnread = (unreadCount || 0) > 0;
 
   const formatTime = (date) => {
     const d = date instanceof Date ? date : new Date(date);
@@ -167,16 +176,21 @@ function ConversationItem({ conversation, onClick }) {
       onClick={onClick}
       className="w-full p-4 flex items-start gap-3 hover:bg-base-darker transition-colors text-left"
     >
-      <div className="w-12 h-12 rounded-full bg-accent flex items-center justify-center text-text-on-accent font-semibold text-lg shrink-0">
+      <div className="relative w-12 h-12 rounded-full bg-accent flex items-center justify-center text-text-on-accent font-semibold text-lg shrink-0">
         {otherUser.username.charAt(0).toUpperCase()}
+        {hasUnread && (
+          <span className="absolute -top-1 -right-1 min-w-[1.25rem] h-5 px-1 bg-success text-white text-xs font-bold rounded-full flex items-center justify-center">
+            {unreadCount > 9 ? "9+" : unreadCount}
+          </span>
+        )}
       </div>
 
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between mb-1">
-          <span className="font-semibold text-text-primary truncate">
+          <span className={`truncate ${hasUnread ? "font-bold text-text-primary" : "font-semibold text-text-primary"}`}>
             {otherUser.username}
           </span>
-          <span className="text-xs text-text-muted shrink-0 ml-2">
+          <span className={`text-xs shrink-0 ml-2 ${hasUnread ? "text-accent font-semibold" : "text-text-muted"}`}>
             {formatTime(timestamp)}
           </span>
         </div>
@@ -187,7 +201,11 @@ function ConversationItem({ conversation, onClick }) {
           )}
           <p
             className={`text-sm truncate ${
-              isLocked ? "text-text-muted" : "text-text-secondary"
+              isLocked
+                ? "text-text-muted"
+                : hasUnread
+                  ? "text-text-primary font-semibold"
+                  : "text-text-secondary"
             }`}
           >
             {lastMessage || "No messages yet"}

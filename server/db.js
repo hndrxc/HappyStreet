@@ -974,6 +974,29 @@ async function joinQuestQueue(hotspotId, questId, userId, description = "") {
   return await getHotspotById(hotspot._id);
 }
 
+async function peekQuestRecipient(hotspotId, questId) {
+  const hotspot = await getHotspotById(hotspotId);
+  if (!hotspot) return null;
+
+  const hotspots = db.collection("hotspotTable");
+  const targetId = ObjectId.isValid(String(hotspot._id))
+    ? new ObjectId(String(hotspot._id))
+    : hotspot._id;
+
+  const rawDoc = await hotspots.findOne({ _id: targetId });
+  const queueEntries = Array.isArray(rawDoc?.questq_ids) ? rawDoc.questq_ids : [];
+  const entry = queueEntries.find((e) => String(e?.quest_id) === String(questId));
+  if (!entry) return null;
+
+  const recipients = Array.isArray(entry.recipient_ids) ? entry.recipient_ids : [];
+  if (recipients.length === 0) return null;
+
+  const first = recipients[0];
+  const recipientId = typeof first === "string" ? first : first?.userId;
+  const description = typeof first === "string" ? "" : (first?.description || "");
+  return { recipientId, description };
+}
+
 async function dequeueQuestRecipient(hotspotId, questId) {
   const hotspot = await getHotspotById(hotspotId);
   if (!hotspot) return null;
@@ -1185,14 +1208,21 @@ async function getConversationsByUser(userId) {
       }
     }
 
+    const tunnelIdStr = tunnel._id.toString();
+
     const lastMsg = await db.collection("messagesTable")
-      .find({ conversationId: tunnel._id.toString() })
+      .find({ conversationId: tunnelIdStr })
       .sort({ timestamp: -1 })
       .limit(1)
       .toArray();
 
+    const unreadCount = await db.collection("messagesTable").countDocuments({
+      conversationId: tunnelIdStr,
+      readBy: { $ne: userIdStr },
+    });
+
     return {
-      id: tunnel._id.toString(),
+      id: tunnelIdStr,
       questId: tunnel.quest_id ? String(tunnel.quest_id) : null,
       questTitle,
       coinReward,
@@ -1200,6 +1230,7 @@ async function getConversationsByUser(userId) {
       lastMessage: lastMsg.length > 0 ? lastMsg[0].text : "",
       timestamp: lastMsg.length > 0 ? lastMsg[0].timestamp : (tunnel.created_at || new Date()),
       isLocked: tunnel.status === "COMPLETED" || tunnel.status === "FAILED",
+      unreadCount,
       role: isRecipient ? "needs" : "fulfillments",
     };
   }));
@@ -1360,7 +1391,7 @@ module.exports = {
   getUser, getUserByUsername, createUser, updateUserLocation, updateUserBalance, updateUserHotspot,
   getHotspots, createHotspot, getHotspotById, getNearbyHotspots, removeRecipientFromQueue,
   joinQuestQueue,
-  acquireQuestRecipientForCompletion, requeueQuestRecipient, dequeueQuestRecipient,
+  acquireQuestRecipientForCompletion, requeueQuestRecipient, peekQuestRecipient, dequeueQuestRecipient,
   getTunnel, createTunnel, updateTunnelStatus, deleteTunnel,
   getAllStocks, getStockByTicker, getCategories, getLeaderboard, getUserStats,
   getConversationsByUser, getMessagesByConversation, createMessage, markMessagesRead, getUnreadCountsForUser,

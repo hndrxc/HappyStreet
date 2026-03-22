@@ -12,6 +12,7 @@ export default function HotspotQuestList({ hotspot, onBack }) {
   const [requestModal, setRequestModal] = useState(null);
   const [waitingForMatch, setWaitingForMatch] = useState(false);
   const [questqIds, setQuestqIds] = useState(hotspot?.questq_ids || []);
+  const [acceptError, setAcceptError] = useState(null);
 
   const { user } = useAuth();
   const { socket } = useSocket(user);
@@ -75,12 +76,19 @@ export default function HotspotQuestList({ hotspot, onBack }) {
       setTimeout(() => setWaitingForMatch(false), 3000);
     };
 
+    const onAcceptError = (data) => {
+      setAcceptError(data?.error || "Could not accept quest");
+      setTimeout(() => setAcceptError(null), 4000);
+    };
+
     socket.on("quest_completed", onQuestCompleted);
     socket.on("task_request_sent", onRequestSent);
+    socket.on("quest_accept_error", onAcceptError);
 
     return () => {
       socket.off("quest_completed", onQuestCompleted);
       socket.off("task_request_sent", onRequestSent);
+      socket.off("quest_accept_error", onAcceptError);
     };
   }, [socket]);
 
@@ -165,6 +173,12 @@ export default function HotspotQuestList({ hotspot, onBack }) {
         </div>
       )}
 
+      {acceptError && (
+        <div className="px-4 py-3 bg-red-500/10 border-b border-red-500/20 text-center">
+          <p className="text-sm text-red-500 font-medium">{acceptError}</p>
+        </div>
+      )}
+
       <div className="page-scroll scrollbar-hide">
         <div className="page-content space-y-3">
           {/* Requested Quests Panel */}
@@ -176,6 +190,10 @@ export default function HotspotQuestList({ hotspot, onBack }) {
                   const quest = questMap.get(String(entry.quest_id));
                   const recipients = Array.isArray(entry.recipient_ids) ? entry.recipient_ids : [];
                   const count = recipients.length;
+                  const isOwnRequest = recipients.some((r) => {
+                    const rid = typeof r === "string" ? r : r?.userId;
+                    return rid && String(rid) === String(userId);
+                  });
 
                   return (
                     <div key={entry.quest_id} className="p-3 flex items-center gap-3">
@@ -195,15 +213,21 @@ export default function HotspotQuestList({ hotspot, onBack }) {
                           ) : null;
                         })}
                       </div>
-                      <button
-                        onClick={() => handleAcceptQuest(entry.quest_id)}
-                        disabled={!isAtHotspot}
-                        className="w-10 h-10 rounded-xl bg-success/15 text-success flex items-center justify-center shrink-0 transition-all active:scale-90 disabled:opacity-30 disabled:cursor-not-allowed"
-                      >
-                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                        </svg>
-                      </button>
+                      {isOwnRequest ? (
+                        <span className="text-xs text-accent font-medium px-3 py-2 bg-accent/10 rounded-xl shrink-0">
+                          Your request
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => handleAcceptQuest(entry.quest_id)}
+                          disabled={!isAtHotspot}
+                          className="w-10 h-10 rounded-xl bg-success/15 text-success flex items-center justify-center shrink-0 transition-all active:scale-90 disabled:opacity-30 disabled:cursor-not-allowed"
+                        >
+                          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                          </svg>
+                        </button>
+                      )}
                     </div>
                   );
                 })}
