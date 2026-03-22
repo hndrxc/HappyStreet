@@ -119,8 +119,12 @@ export default function ChatView({
   };
 
   const formatTime = (date) => {
-    const d = date instanceof Date ? date : new Date(date);
-    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    if (!date) return "";
+    const d = date instanceof Date ? date
+      : typeof date === "number" ? new Date(date)
+      : new Date(date);
+    if (isNaN(d.getTime())) return "";
+    return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
   };
 
   return (
@@ -173,15 +177,15 @@ export default function ChatView({
                 className={`flex ${isMine ? "justify-end" : "justify-start"}`}
               >
                 <div
-                  className={`max-w-[75%] px-4 py-2 rounded-2xl ${
+                  className={`max-w-[80%] px-4 py-2.5 rounded-2xl ${
                     isMine
                       ? "bg-accent text-text-on-accent rounded-br-md"
                       : "bg-surface border border-border text-text-primary rounded-bl-md"
                   }`}
                 >
-                  <p className="text-sm">{msg.text}</p>
+                  <p className="text-[15px] break-words whitespace-pre-wrap">{msg.text}</p>
                   <p
-                    className={`text-xs mt-1 ${
+                    className={`text-[11px] mt-1 ${
                       isMine ? "text-text-on-accent/70" : "text-text-muted"
                     }`}
                   >
@@ -194,25 +198,25 @@ export default function ChatView({
         </div>
       </div>
 
-      {/* Chat input */}
+      {/* Chat input — Instagram-style */}
       {!isLocked && (
         <form
           onSubmit={handleSend}
-          className="page-header bg-surface border-t border-border flex items-center gap-3 shrink-0"
+          className="bg-surface border-t border-border flex items-end gap-2 px-3 py-2 shrink-0"
         >
           <input
             ref={inputRef}
             type="text"
+            inputMode="text"
             value={newMessage}
             onChange={(e) => setNewMessage(e.target.value)}
-            placeholder="Type a message..."
-            autoFocus
-            className="flex-1 min-h-[2.75rem] px-4 bg-base rounded-xl border border-border text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent transition-colors"
+            placeholder="Message..."
+            className="flex-1 min-h-[44px] px-4 py-2.5 bg-base rounded-full border border-border text-[15px] text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 transition-colors"
           />
           <button
             type="submit"
             disabled={!newMessage.trim() || sending}
-            className="w-11 h-11 bg-accent text-text-on-accent rounded-xl transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center shrink-0"
+            className="w-11 h-11 bg-accent text-text-on-accent rounded-full transition-all active:scale-90 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center shrink-0 shadow-warm-sm"
           >
             <SendIcon className="w-5 h-5" />
           </button>

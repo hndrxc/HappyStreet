@@ -36,18 +36,22 @@ export default function AppShell({ children }) {
 
   // Notify both parties when a tunnel is established (dedup by tunnelId)
   useEffect(() => {
-    if (!socket) return;
+    if (!socket || !user?.id) return;
     const seenTunnels = new Set();
     const onTunnelCreated = (data) => {
       const tid = data?.tunnelId;
       if (tid && seenTunnels.has(tid)) return; // skip duplicate
       if (tid) seenTunnels.add(tid);
-      setMatchToast(data?.questTitle || "Quest");
+      const isRecipient = String(user.id) === String(data?.recipientId);
+      setMatchToast({
+        questTitle: data?.questTitle || "Quest",
+        isRecipient,
+      });
       setTimeout(() => setMatchToast(null), 5000);
     };
     socket.on("tunnel_created", onTunnelCreated);
     return () => socket.off("tunnel_created", onTunnelCreated);
-  }, [socket]);
+  }, [socket, user?.id]);
 
   // Loading state
   if (isLoading) {
@@ -86,8 +90,15 @@ export default function AppShell({ children }) {
               <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
             </svg>
             <div>
-              <p className="text-sm font-semibold">Quest matched!</p>
-              <p className="text-xs opacity-90">{matchToast} — check your messages</p>
+              <p className="text-sm font-semibold">
+                {matchToast.isRecipient
+                  ? "Someone accepted your quest!"
+                  : "Quest matched!"}
+              </p>
+              <p className="text-xs opacity-90">
+                {matchToast.questTitle} — check{" "}
+                {matchToast.isRecipient ? "Requests" : "Offers"} in Messages
+              </p>
             </div>
           </div>
         </div>
