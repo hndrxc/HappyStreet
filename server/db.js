@@ -402,6 +402,9 @@ async function updateUserBalance(userId, amount) {
 async function getHotspots() {
   return await db.collection("hotspotTable").find().toArray();
 }
+async function getHotspotById(id){
+  return await db.collection("hotspotTable").findOne({id: parseInt(id)});
+}
 
 async function createHotspot(name, lat, lon, radius = 80) {
   const result = await db.collection("hotspotTable").insertOne({ name, lat, lon, radius, questq_ids: [] });
@@ -436,6 +439,6 @@ module.exports = {
   connect,
   getQuests, createQuest, completeQuest, getNearbyQuests,
   getUser, createUser, updateUserLocation, updateUserBalance,
-  getHotspots, createHotspot,
+  getHotspots, createHotspot, getHotspotById,
   getTunnel, createTunnel, updateTunnelStatus,
 };
