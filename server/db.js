@@ -9,23 +9,31 @@ const VALUE_RISE = 5;
 const CATEGORY_DEFS = [
   { name: "kindness", displayName: "Kindness" },
   { name: "mindfulness", displayName: "Mindfulness" },
-  { name: "social_connection", displayName: "Social Connection" },
-  { name: "physical_activity", displayName: "Physical Activity" },
+  { name: "social connection", displayName: "Social Connection" },
+  { name: "physical activity", displayName: "Physical Activity" },
   { name: "creativity", displayName: "Creativity" },
   { name: "gratitude", displayName: "Gratitude" },
 ];
 
 const CATEGORY_NAMES = CATEGORY_DEFS.map((c) => c.name);
 const CATEGORY_MAP = Object.fromEntries(CATEGORY_DEFS.map((c) => [c.name, c]));
+const CATEGORY_ALIASES = {
+  social_connection: "social connection",
+  physical_activity: "physical activity",
+};
 
-const DEFAULT_QUESTS = [
-  { title: "Go for a walk", category: "physical_activity", value: 100, completions: 0 },
-  { title: "Call a friend", category: "social_connection", value: 100, completions: 0 },
-  { title: "Cook a meal", category: "creativity", value: 100, completions: 0 },
-];
+const { generateQuests } = require("./quests/combinator");
+const { getAllPackQuests } = require("./quests/packs");
+
+function normalizeCategory(category) {
+  if (typeof category !== "string") return null;
+  const normalized = category.trim().toLowerCase().replace(/\s+/g, " ");
+  return CATEGORY_ALIASES[normalized] || normalized;
+}
 
 function isValidCategory(category) {
-  return CATEGORY_NAMES.includes(category);
+  const normalized = normalizeCategory(category);
+  return normalized ? CATEGORY_NAMES.includes(normalized) : false;
 }
 
 function normalizeQuest(doc) {
@@ -33,8 +41,19 @@ function normalizeQuest(doc) {
   const { _id, ...rest } = doc;
   return {
     id: _id.toString(),
-    category: rest.category || DEFAULT_CATEGORY,
-    ...rest,
+    title: rest.title,
+    category: normalizeCategory(rest.category) || DEFAULT_CATEGORY,
+    difficulty_tier: rest.difficulty_tier || "medium",
+    coin_reward: rest.coin_reward ?? 15,
+    completions: rest.completions || 0,
+    value: rest.value ?? 100,
+    source: rest.source || "generated",
+    pack: rest.pack || null,
+    hotspot_id: rest.hotspot_id ? rest.hotspot_id.toString() : null,
+    location: rest.location || null,
+    radius_meters: rest.radius_meters ?? 500,
+    active: rest.active !== false,
+    created_at: rest.created_at || rest.createdAt || null,
   };
 }
 
@@ -45,9 +64,43 @@ async function ensureSeedData() {
 
   const questCount = await quests.countDocuments();
   if (questCount === 0) {
-    await quests.insertMany(
-      DEFAULT_QUESTS.map((q) => ({ ...q, createdAt: now, updatedAt: now }))
-    );
+    const generated = generateQuests(50);
+    const packQuests = getAllPackQuests();
+
+    const allQuests = [
+      ...generated.map((q) => ({
+        title: q.title,
+        category: q.category,
+        difficulty_tier: q.difficulty_tier,
+        coin_reward: q.coin_reward,
+        completions: 0,
+        value: 100,
+        source: "generated",
+        pack: null,
+        hotspot_id: null,
+        location: null,
+        radius_meters: 500,
+        active: true,
+        created_at: now,
+      })),
+      ...packQuests.map((q) => ({
+        title: q.title,
+        category: q.category,
+        difficulty_tier: q.difficulty_tier,
+        coin_reward: q.coin_reward,
+        completions: 0,
+        value: 100,
+        source: "pack",
+        pack: q.pack,
+        hotspot_id: null,
+        location: null,
+        radius_meters: 500,
+        active: true,
+        created_at: now,
+      })),
+    ];
+
+    await quests.insertMany(allQuests);
   }
 
   const categoryCount = await categories.countDocuments();
@@ -69,6 +122,81 @@ async function ensureSeedData() {
     { $or: [{ category: { $exists: false } }, { category: null }] },
     { $set: { category: DEFAULT_CATEGORY, updatedAt: now } }
   );
+
+  // Migrate legacy underscore category names to canonical Phase 1 names.
+  for (const [legacy, canonical] of Object.entries(CATEGORY_ALIASES)) {
+    await quests.updateMany(
+      { category: legacy },
+      { $set: { category: canonical, updatedAt: now } }
+    );
+  }
+
+  // Backfill new fields on quests that predate Phase 1.
+  await quests.updateMany(
+    { difficulty_tier: { $exists: false } },
+    {
+      $set: {
+        difficulty_tier: "medium",
+        coin_reward: 15,
+        source: "generated",
+        pack: null,
+        hotspot_id: null,
+        location: null,
+        radius_meters: 500,
+        active: true,
+      },
+    }
+  );
+
+  // Ensure all canonical category documents exist and consolidate legacy names.
+  for (const [legacy, canonical] of Object.entries(CATEGORY_ALIASES)) {
+    const legacyDoc = await categories.findOne({ name: legacy });
+    if (!legacyDoc) continue;
+
+    const canonicalDoc = await categories.findOne({ name: canonical });
+    if (canonicalDoc) {
+      await categories.updateOne(
+        { _id: canonicalDoc._id },
+        {
+          $inc: { totalCompletions: legacyDoc.totalCompletions || 0 },
+          $set: { updatedAt: now },
+        }
+      );
+      await categories.deleteOne({ _id: legacyDoc._id });
+      continue;
+    }
+
+    await categories.updateOne(
+      { _id: legacyDoc._id },
+      {
+        $set: {
+          name: canonical,
+          displayName: CATEGORY_MAP[canonical].displayName,
+          updatedAt: now,
+        },
+      }
+    );
+  }
+
+  for (const categoryDef of CATEGORY_DEFS) {
+    await categories.updateOne(
+      { name: categoryDef.name },
+      {
+        $setOnInsert: {
+          name: categoryDef.name,
+          displayName: categoryDef.displayName,
+          price: 100,
+          totalCompletions: 0,
+          createdAt: now,
+          updatedAt: now,
+        },
+      },
+      { upsert: true }
+    );
+  }
+
+  // Geospatial index for /quests/nearby — idempotent, null locations auto-excluded.
+  await quests.createIndex({ location: "2dsphere" });
 }
 
 async function connect(uri) {
@@ -85,16 +213,24 @@ async function getQuests() {
   return docs.map(normalizeQuest);
 }
 
-async function createQuest(title, value = 100, category = DEFAULT_CATEGORY) {
+async function createQuest(title, value = 100, category = DEFAULT_CATEGORY, extra = {}) {
   const now = new Date();
-  const safeCategory = isValidCategory(category) ? category : DEFAULT_CATEGORY;
+  const normalizedCategory = normalizeCategory(category);
+  const safeCategory = isValidCategory(normalizedCategory) ? normalizedCategory : DEFAULT_CATEGORY;
   const result = await db.collection("questTable").insertOne({
     title,
     value,
     completions: 0,
     category: safeCategory,
-    createdAt: now,
-    updatedAt: now,
+    difficulty_tier: extra.difficulty_tier || "medium",
+    coin_reward: extra.coin_reward ?? 15,
+    source: extra.source || "community",
+    pack: extra.pack || null,
+    hotspot_id: extra.hotspot_id || null,
+    location: extra.location || null,
+    radius_meters: extra.radius_meters ?? 500,
+    active: true,
+    created_at: now,
   });
   const doc = await db.collection("questTable").findOne({ _id: result.insertedId });
   return normalizeQuest(doc);
@@ -140,7 +276,7 @@ async function completeQuest(questId) {
     ]
   );
 
-  const completedCategory = doc.category || DEFAULT_CATEGORY;
+  const completedCategory = normalizeCategory(doc.category) || DEFAULT_CATEGORY;
   const meta = CATEGORY_MAP[completedCategory];
   await db.collection("categories").updateOne(
     { name: completedCategory },
@@ -159,6 +295,81 @@ async function completeQuest(questId) {
   );
 
   return normalizeQuest(doc);
+}
+
+// --- Nearby Quests (geo-aware) ---
+async function getNearbyQuests({ lat, lon, radius = 1000, category, difficulty, limit = 20 }) {
+  const quests = db.collection("questTable");
+  const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.floor(limit)) : 20;
+  const normalizedCategory = normalizeCategory(category);
+  const categoryFilter = normalizedCategory && isValidCategory(normalizedCategory)
+    ? normalizedCategory
+    : null;
+
+  // 1) Geo-located quests within radius via $geoNear aggregation
+  const pipeline = [
+    {
+      $geoNear: {
+        near: { type: "Point", coordinates: [lon, lat] },
+        distanceField: "distance_meters",
+        maxDistance: radius,
+        spherical: true,
+        query: { active: true },
+      },
+    },
+  ];
+  if (categoryFilter) pipeline.push({ $match: { category: categoryFilter } });
+  if (difficulty) pipeline.push({ $match: { difficulty_tier: difficulty } });
+  pipeline.push({ $limit: safeLimit });
+
+  const geoQuests = await quests.aggregate(pipeline).toArray();
+
+  // 2) Global quests (location is null) — always included
+  const globalFilter = { location: null, active: true };
+  if (categoryFilter) globalFilter.category = categoryFilter;
+  if (difficulty) globalFilter.difficulty_tier = difficulty;
+
+  const globalQuests = await quests.find(globalFilter).limit(safeLimit).toArray();
+
+  // 3) Merge: geo quests first (sorted by distance), then globals, trim to limit
+  const normalizedGeo = geoQuests.map((doc) => ({
+    ...normalizeQuest(doc),
+    distance_meters: Math.round(doc.distance_meters),
+  }));
+
+  const normalizedGlobal = globalQuests.map((doc) => ({
+    ...normalizeQuest(doc),
+    distance_meters: null,
+  }));
+
+  if (normalizedGeo.length === 0) {
+    return normalizedGlobal.slice(0, safeLimit);
+  }
+
+  if (normalizedGlobal.length === 0) {
+    return normalizedGeo.slice(0, safeLimit);
+  }
+
+  // Preserve nearest-first geo sorting while always mixing in at least one global quest.
+  let takeGlobal = 1;
+  let takeGeo = Math.min(normalizedGeo.length, safeLimit - takeGlobal);
+  let remaining = safeLimit - takeGeo - takeGlobal;
+
+  if (remaining > 0) {
+    const extraGeo = Math.min(remaining, normalizedGeo.length - takeGeo);
+    takeGeo += extraGeo;
+    remaining -= extraGeo;
+  }
+
+  if (remaining > 0) {
+    const extraGlobal = Math.min(remaining, normalizedGlobal.length - takeGlobal);
+    takeGlobal += extraGlobal;
+  }
+
+  return [
+    ...normalizedGeo.slice(0, takeGeo),
+    ...normalizedGlobal.slice(0, takeGlobal),
+  ];
 }
 
 // --- Users ---
@@ -223,7 +434,7 @@ module.exports = {
   DEFAULT_CATEGORY,
   isValidCategory,
   connect,
-  getQuests, createQuest, completeQuest,
+  getQuests, createQuest, completeQuest, getNearbyQuests,
   getUser, createUser, updateUserLocation, updateUserBalance,
   getHotspots, createHotspot,
   getTunnel, createTunnel, updateTunnelStatus,

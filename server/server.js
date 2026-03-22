@@ -74,6 +74,29 @@ async function requestHandler(req, res) {
   try {
     const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
 
+    if (req.method === "GET" && url.pathname === "/quests/nearby") {
+      const lat = parseFloat(url.searchParams.get("lat"));
+      const lon = parseFloat(url.searchParams.get("lon"));
+
+      if (isNaN(lat) || isNaN(lon)) {
+        sendJson(res, 400, { error: "lat and lon query params required" });
+        return;
+      }
+      if (lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+        sendJson(res, 400, { error: "lat must be -90..90, lon must be -180..180" });
+        return;
+      }
+
+      const radius = parseFloat(url.searchParams.get("radius")) || 1000;
+      const limit = parseInt(url.searchParams.get("limit"), 10) || 20;
+      const category = url.searchParams.get("category") || undefined;
+      const difficulty = url.searchParams.get("difficulty") || undefined;
+
+      const quests = await db.getNearbyQuests({ lat, lon, radius, category, difficulty, limit });
+      sendJson(res, 200, quests);
+      return;
+    }
+
     if (req.method === "GET" && url.pathname === "/quests") {
       const quests = await db.getQuests();
       sendJson(res, 200, quests);
