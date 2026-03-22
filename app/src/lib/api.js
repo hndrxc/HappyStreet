@@ -135,3 +135,61 @@ export async function fetchCategories() {
   if (!res.ok) throw new Error(`Failed to fetch categories: ${res.status}`);
   return res.json();
 }
+
+export async function fetchConversations(token) {
+  if (!BASE_URL) return { needs: [], fulfillments: [] };
+  const res = await fetch(`${BASE_URL}/conversations`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch conversations: ${res.status}`);
+  return res.json();
+}
+
+export async function fetchMessages(conversationId, token) {
+  if (!BASE_URL) return [];
+  const res = await fetch(`${BASE_URL}/conversations/${conversationId}/messages`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch messages: ${res.status}`);
+  return res.json();
+}
+
+export async function sendMessage(conversationId, text, token) {
+  if (!BASE_URL) throw new Error("Server URL not configured");
+  const res = await fetch(`${BASE_URL}/conversations/${conversationId}/messages`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ text }),
+  });
+  if (!res.ok) throw new Error(`Failed to send message: ${res.status}`);
+  return res.json();
+}
+
+export async function fetchUserShares(userId, token) {
+  if (!BASE_URL) return [];
+  const res = await fetch(`${BASE_URL}/users/${userId}/shares`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch shares: ${res.status}`);
+  return res.json();
+}
+
+export async function sellShare(userId, shareId, token) {
+  if (!BASE_URL) throw new Error("Server URL not configured");
+  const res = await fetch(`${BASE_URL}/users/${userId}/shares/${shareId}/sell`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`Failed to sell share: ${res.status}`);
+  return res.json();
+}
+
+export async function sellAllShares(userId, token) {
+  if (!BASE_URL) throw new Error("Server URL not configured");
+  const res = await fetch(`${BASE_URL}/users/${userId}/shares/sell-all`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`Failed to sell all shares: ${res.status}`);
+  return res.json();
+}

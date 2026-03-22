@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { LineChart, Line, AreaChart, Area, ResponsiveContainer, YAxis } from "recharts";
 import { fetchMarket, fetchStock } from "@/lib/api";
-import { CATEGORY_COLORS } from "@/lib/mockData";
+import { CATEGORY_COLORS } from "@/lib/categories";
 import useSocket from "@/lib/useSocket";
 
 const TICKER_DISPLAY = {

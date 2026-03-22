@@ -1,29 +1,47 @@
 "use client";
 
-import { useState } from "react";
-import { conversations, chatMessages, currentUser } from "@/lib/mockData";
+import { useState, useEffect } from "react";
+import { useAuth } from "@/context/AuthContext";
+import { fetchConversations, fetchMessages } from "@/lib/api";
 import { LockIcon } from "@/components/icons";
 import ChatView from "@/components/ChatView";
 
 export default function MessagesPage() {
+  const { user, token } = useAuth();
   const [activeSection, setActiveSection] = useState("needs");
+  const [conversations, setConversations] = useState({ needs: [], fulfillments: [] });
   const [selectedConversation, setSelectedConversation] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  const currentConversations = activeSection === "needs" 
-    ? conversations.needs 
-    : conversations.fulfillments;
+  useEffect(() => {
+    if (!token) return;
+    setLoading(true);
+    fetchConversations(token)
+      .then(setConversations)
+      .catch((err) => console.error("Failed to load conversations:", err))
+      .finally(() => setLoading(false));
+  }, [token]);
+
+  useEffect(() => {
+    if (!selectedConversation || !token) return;
+    fetchMessages(selectedConversation.id, token)
+      .then(setMessages)
+      .catch((err) => console.error("Failed to load messages:", err));
+  }, [selectedConversation, token]);
+
+  const currentConversations =
+    activeSection === "needs" ? conversations.needs : conversations.fulfillments;
 
   if (selectedConversation) {
-    const messages = chatMessages[selectedConversation.id] || [];
-    const isRecipient = activeSection === "needs"; // If in "needs", current user is the recipient
-    
+    const isRecipient = activeSection === "needs";
     return (
       <ChatView
         conversation={selectedConversation}
         messages={messages}
-        currentUserId={currentUser.id}
+        currentUserId={user?.id}
         isRecipient={isRecipient}
-        onBack={() => setSelectedConversation(null)}
+        onBack={() => { setSelectedConversation(null); setMessages([]); }}
       />
     );
   }
@@ -61,7 +79,11 @@ export default function MessagesPage() {
 
       <div className="page-scroll scrollbar-hide">
         <div className="page-content">
-          {currentConversations.length === 0 ? (
+          {loading ? (
+            <div className="page-center">
+              <p className="text-text-muted text-sm">Loading...</p>
+            </div>
+          ) : currentConversations.length === 0 ? (
             <div className="page-center">
               <p className="text-text-muted text-sm">No conversations yet</p>
             </div>
@@ -86,15 +108,13 @@ function ConversationItem({ conversation, onClick }) {
   const { questTitle, otherUser, lastMessage, timestamp, isLocked } = conversation;
 
   const formatTime = (date) => {
+    const d = date instanceof Date ? date : new Date(date);
     const now = new Date();
-    const diff = now - date;
+    const diff = now - d;
     const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-
     if (days > 0) return `${days}d ago`;
-
     const hours = Math.floor(diff / (1000 * 60 * 60));
     if (hours > 0) return `${hours}h ago`;
-
     const mins = Math.floor(diff / (1000 * 60));
     return `${mins}m ago`;
   };
@@ -121,7 +141,7 @@ function ConversationItem({ conversation, onClick }) {
         <div className="flex items-center gap-2">
           {isLocked && <LockIcon className="w-3 h-3 text-text-muted shrink-0" />}
           <p className={`text-sm truncate ${isLocked ? "text-text-muted" : "text-text-secondary"}`}>
-            {lastMessage}
+            {lastMessage || "No messages yet"}
           </p>
         </div>
       </div>

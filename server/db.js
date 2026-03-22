@@ -294,6 +294,12 @@ async function ensureSeedData() {
     { $set: { joy_coins: 0, total_completions: 0, streak_current: 0, streak_last_date: null } }
   );
 
+  // Backfill hotspot_id field on existing users
+  await db.collection("userTable").updateMany(
+    { hotspot_id: { $exists: false } },
+    { $set: { hotspot_id: null } }
+  );
+
   // Geospatial index for /quests/nearby — idempotent, null locations auto-excluded.
   await quests.createIndex({ location: "2dsphere" });
 
@@ -323,20 +329,21 @@ async function ensureSeedData() {
 
   // Seed default hotspots if empty
   const hotspotCount = await hotspots.countDocuments();
-  if (hotspotCount === 0) {
-    const defaultHotspots = [
-      { name: "Middleton Library", description: "A quiet study spot on campus", lat: 30.4133, lon: -91.1800, radius_meters: 300, category_bias: "mindfulness" },
-      { name: "LSU Quad", description: "The heart of campus life", lat: 30.4155, lon: -91.1780, radius_meters: 400, category_bias: "social connection" },
-      { name: "Student Union", description: "Where everyone gathers between classes", lat: 30.4148, lon: -91.1768, radius_meters: 250, category_bias: "social connection" },
-      { name: "Highland Coffees", description: "Local coffee shop near the north gates", lat: 30.4103, lon: -91.1780, radius_meters: 150, category_bias: "kindness" },
-      { name: "Parade Ground", description: "Open field perfect for outdoor activities", lat: 30.4160, lon: -91.1810, radius_meters: 350, category_bias: "physical activity" },
-      { name: "Tiger Stadium", description: "Death Valley — home of LSU football", lat: 30.4120, lon: -91.1840, radius_meters: 500, category_bias: "social connection" },
-      { name: "PMAC", description: "Pete Maravich Assembly Center", lat: 30.4100, lon: -91.1850, radius_meters: 200, category_bias: "physical activity" },
-      { name: "Free Speech Alley", description: "A place for open expression and creativity", lat: 30.4150, lon: -91.1770, radius_meters: 100, category_bias: "creativity" },
-      { name: "The Quad at South", description: "Southern campus green space", lat: 30.4090, lon: -91.1760, radius_meters: 300, category_bias: "gratitude" },
-      { name: "Nick's Cafe", description: "Classic campus diner", lat: 30.4085, lon: -91.1785, radius_meters: 150, category_bias: "kindness" },
-    ];
+  // Center: 30.389616, -91.170640
+  const defaultHotspots = [
+    { name: "The Corner Store",      description: "A neighborhood staple for quick kindness",       lat: 30.389616, lon: -91.170640, radius_meters: 150, category_bias: "kindness" },
+    { name: "The Park Bench",        description: "A quiet spot for reflection",                    lat: 30.391416, lon: -91.170640, radius_meters: 200, category_bias: "mindfulness" },
+    { name: "Community Garden",      description: "Neighbors growing things together",               lat: 30.390966, lon: -91.168120, radius_meters: 250, category_bias: "social connection" },
+    { name: "The Running Path",      description: "A loop where people push themselves",             lat: 30.389616, lon: -91.167520, radius_meters: 300, category_bias: "physical activity" },
+    { name: "The Mural Wall",        description: "Local art covering an entire block",              lat: 30.388996, lon: -91.168480, radius_meters: 150, category_bias: "creativity" },
+    { name: "Front Porch Cafe",      description: "Where the whole block shows up for coffee",      lat: 30.387366, lon: -91.170640, radius_meters: 200, category_bias: "kindness" },
+    { name: "The Pocket Park",       description: "A tiny green space tucked between buildings",    lat: 30.388196, lon: -91.172720, radius_meters: 180, category_bias: "gratitude" },
+    { name: "The Crossroads",        description: "Where everyone passes through",                  lat: 30.389616, lon: -91.174280, radius_meters: 250, category_bias: "social connection" },
+    { name: "Old Oak Tree",          description: "A landmark people gather under for shade",       lat: 30.391116, lon: -91.173760, radius_meters: 120, category_bias: "mindfulness" },
+    { name: "The Hilltop",           description: "Best view in the neighborhood",                  lat: 30.393666, lon: -91.170640, radius_meters: 300, category_bias: "gratitude" },
+  ];
 
+  if (hotspotCount === 0) {
     await hotspots.insertMany(
       defaultHotspots.map((h) => ({
         name: h.name,
@@ -352,6 +359,22 @@ async function ensureSeedData() {
       }))
     );
     console.log(`Seeded ${defaultHotspots.length} default hotspots`);
+  } else {
+    // Migrate existing hotspots to updated coordinates
+    for (const h of defaultHotspots) {
+      await hotspots.updateOne(
+        { name: h.name },
+        {
+          $set: {
+            location: { type: "Point", coordinates: [h.lon, h.lat] },
+            description: h.description,
+            radius_meters: h.radius_meters,
+            category_bias: h.category_bias,
+          },
+        }
+      );
+    }
+    console.log("Migrated hotspot coordinates to updated locations");
   }
 
   // Distribute quests across hotspots if quests are unanchored
@@ -713,8 +736,16 @@ async function getUserByUsername(username) {
 }
 
 async function createUser(username, pword_hash) {
-  const result = await db.collection("userTable").insertOne({ username, pword_hash, balance: 100, lat: null, lon: null, collections: [] });
+  const result = await db.collection("userTable").insertOne({ username, pword_hash, balance: 100, lat: null, lon: null, hotspot_id: null, collections: [] });
   return await db.collection("userTable").findOne({ _id: result.insertedId });
+}
+
+async function updateUserHotspot(userId, hotspotId) {
+  return await db.collection("userTable").findOneAndUpdate(
+    { _id: new ObjectId(userId) },
+    { $set: { hotspot_id: hotspotId } },
+    { returnDocument: "after" }
+  );
 }
 
 async function updateUserLocation(userId, lat, lon) {
@@ -1054,6 +1085,171 @@ async function getUserStats(userId) {
   };
 }
 
+// --- Conversations (tunnel-based) ---
+
+async function getConversationsByUser(userId) {
+  const userIdStr = String(userId);
+  const tunnels = await db.collection("tunnelTable").find({
+    $or: [{ recipient_id: userIdStr }, { offerer_id: userIdStr }],
+  }).toArray();
+
+  const results = await Promise.all(tunnels.map(async (tunnel) => {
+    const isRecipient = String(tunnel.recipient_id) === userIdStr;
+    const otherUserId = isRecipient ? tunnel.offerer_id : tunnel.recipient_id;
+
+    let otherUser = { id: String(otherUserId || "unknown"), username: "unknown" };
+    if (otherUserId && ObjectId.isValid(String(otherUserId))) {
+      const userDoc = await db.collection("userTable").findOne(
+        { _id: new ObjectId(String(otherUserId)) },
+        { projection: { username: 1 } }
+      );
+      if (userDoc) otherUser = { id: userDoc._id.toString(), username: userDoc.username };
+    }
+
+    let questTitle = tunnel.quest_id ? String(tunnel.quest_id) : "Quest";
+    if (tunnel.quest_id && ObjectId.isValid(String(tunnel.quest_id))) {
+      const questDoc = await db.collection("questTable").findOne({ _id: new ObjectId(String(tunnel.quest_id)) });
+      if (questDoc) questTitle = questDoc.title;
+    }
+
+    const lastMsg = await db.collection("messagesTable")
+      .find({ conversationId: tunnel._id.toString() })
+      .sort({ timestamp: -1 })
+      .limit(1)
+      .toArray();
+
+    return {
+      id: tunnel._id.toString(),
+      questId: tunnel.quest_id ? String(tunnel.quest_id) : null,
+      questTitle,
+      otherUser,
+      lastMessage: lastMsg.length > 0 ? lastMsg[0].text : "",
+      timestamp: lastMsg.length > 0 ? lastMsg[0].timestamp : (tunnel.created_at || new Date()),
+      isLocked: tunnel.status === "COMPLETED" || tunnel.status === "FAILED",
+      role: isRecipient ? "needs" : "fulfillments",
+    };
+  }));
+
+  return {
+    needs: results.filter((c) => c.role === "needs"),
+    fulfillments: results.filter((c) => c.role === "fulfillments"),
+  };
+}
+
+async function getMessagesByConversation(conversationId) {
+  const docs = await db.collection("messagesTable")
+    .find({ conversationId: String(conversationId) })
+    .sort({ timestamp: 1 })
+    .toArray();
+  return docs.map((d) => ({
+    id: d._id.toString(),
+    conversationId: d.conversationId,
+    senderId: String(d.senderId),
+    text: d.text,
+    timestamp: d.timestamp,
+  }));
+}
+
+async function createMessage(conversationId, senderId, text) {
+  const doc = {
+    conversationId: String(conversationId),
+    senderId: String(senderId),
+    text: String(text),
+    timestamp: new Date(),
+  };
+  const result = await db.collection("messagesTable").insertOne(doc);
+  return { ...doc, id: result.insertedId.toString() };
+}
+
+// --- Shares ---
+
+async function getUserShares(userId) {
+  const userIdStr = String(userId);
+  const shares = await db.collection("sharesTable").find({ userId: userIdStr }).toArray();
+  const stocks = await db.collection("stocks").find().toArray();
+  const priceByTicker = {};
+  for (const s of stocks) priceByTicker[s.ticker] = s.current_price;
+
+  return shares.map((s) => ({
+    id: s._id.toString(),
+    questId: s.questId || null,
+    questTitle: s.questTitle || "Unknown Quest",
+    ticker: s.ticker || null,
+    shareCount: s.shareCount || 0,
+    currentValue: priceByTicker[s.ticker] ?? 100,
+    acquiredAt: s.acquiredAt || null,
+  }));
+}
+
+async function createUserShare(userId, questId, questTitle, ticker, shareCount) {
+  const doc = {
+    userId: String(userId),
+    questId: questId ? String(questId) : null,
+    questTitle: questTitle || "Unknown Quest",
+    ticker: ticker || null,
+    shareCount: shareCount || 1,
+    acquiredAt: new Date(),
+  };
+  const result = await db.collection("sharesTable").insertOne(doc);
+  return { ...doc, id: result.insertedId.toString() };
+}
+
+async function sellUserShare(shareId, userId) {
+  const userIdStr = String(userId);
+  let oid;
+  try { oid = new ObjectId(shareId); } catch { return null; }
+
+  const share = await db.collection("sharesTable").findOne({ _id: oid, userId: userIdStr });
+  if (!share) return null;
+
+  const stock = share.ticker
+    ? await db.collection("stocks").findOne({ ticker: share.ticker })
+    : null;
+  const pricePerShare = stock ? (stock.current_price || 100) : 100;
+  const totalValue = Math.round(pricePerShare * (share.shareCount || 0));
+
+  await db.collection("sharesTable").deleteOne({ _id: oid });
+
+  if (totalValue > 0 && ObjectId.isValid(userIdStr)) {
+    await db.collection("userTable").updateOne(
+      { _id: new ObjectId(userIdStr) },
+      { $inc: { joy_coins: totalValue } }
+    );
+  }
+
+  return { shareId, totalValue, joy_coins_added: totalValue };
+}
+
+async function sellAllUserShares(userId) {
+  const userIdStr = String(userId);
+  const shares = await db.collection("sharesTable").find({ userId: userIdStr }).toArray();
+  if (shares.length === 0) return { sold: 0, joy_coins_added: 0 };
+
+  const tickers = [...new Set(shares.map((s) => s.ticker).filter(Boolean))];
+  const stocks = tickers.length > 0
+    ? await db.collection("stocks").find({ ticker: { $in: tickers } }).toArray()
+    : [];
+  const priceByTicker = {};
+  for (const s of stocks) priceByTicker[s.ticker] = s.current_price || 100;
+
+  let total = 0;
+  for (const share of shares) {
+    const price = priceByTicker[share.ticker] ?? 100;
+    total += Math.round(price * (share.shareCount || 0));
+  }
+
+  await db.collection("sharesTable").deleteMany({ userId: userIdStr });
+
+  if (total > 0 && ObjectId.isValid(userIdStr)) {
+    await db.collection("userTable").updateOne(
+      { _id: new ObjectId(userIdStr) },
+      { $inc: { joy_coins: total } }
+    );
+  }
+
+  return { sold: shares.length, joy_coins_added: total };
+}
+
 module.exports = {
   DEFAULT_CATEGORY,
   isValidCategory,
@@ -1061,10 +1257,12 @@ module.exports = {
   collection: (name) => db.collection(name),
   getDb,
   getQuests, createQuest, completeQuest, recordCompletion, getNearbyQuests,
-  getUser, getUserByUsername, createUser, updateUserLocation, updateUserBalance,
+  getUser, getUserByUsername, createUser, updateUserLocation, updateUserBalance, updateUserHotspot,
   getHotspots, createHotspot, getHotspotById, getNearbyHotspots, removeRecipientFromQueue,
   joinQuestQueue,
   acquireQuestRecipientForCompletion, requeueQuestRecipient,
   getTunnel, createTunnel, updateTunnelStatus, deleteTunnel,
   getAllStocks, getStockByTicker, getCategories, getLeaderboard, getUserStats,
+  getConversationsByUser, getMessagesByConversation, createMessage,
+  getUserShares, createUserShare, sellUserShare, sellAllUserShares,
 };

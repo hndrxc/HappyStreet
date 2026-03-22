@@ -1,6 +1,6 @@
 "use client";
 
-import { CATEGORY_COLORS, DIFFICULTY_LABELS } from "@/lib/mockData";
+import { CATEGORY_COLORS, DIFFICULTY_LABELS } from "@/lib/categories";
 import { formatDistance } from "@/lib/api";
 
 export default function QuestCard({ quest, onComplete }) {

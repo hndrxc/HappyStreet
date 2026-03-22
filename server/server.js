@@ -438,6 +438,105 @@ async function requestHandler(req, res) {
       return;
     }
 
+    // GET /users/:userId/shares
+    // POST /users/:userId/shares/:shareId/sell
+    // POST /users/:userId/shares/sell-all
+    if (url.pathname.startsWith("/users/") && url.pathname.includes("/shares")) {
+      const parts = url.pathname.split("/"); // ["", "users", userId, "shares", ...]
+      const userId = parts[2];
+
+      if (url.pathname.endsWith("/shares") && req.method === "GET") {
+        const payload = verifyToken(req);
+        if (!payload || payload.userId !== userId) {
+          sendJson(res, 401, { error: "Unauthorized" });
+          return;
+        }
+        const shares = await db.getUserShares(userId);
+        sendJson(res, 200, shares);
+        return;
+      }
+
+      if (url.pathname.endsWith("/sell-all") && req.method === "POST") {
+        const payload = verifyToken(req);
+        if (!payload || payload.userId !== userId) {
+          sendJson(res, 401, { error: "Unauthorized" });
+          return;
+        }
+        const result = await db.sellAllUserShares(userId);
+        sendJson(res, 200, result);
+        return;
+      }
+
+      if (parts.length === 5 && parts[4] !== "sell-all" && req.method === "POST") {
+        // POST /users/:userId/shares/:shareId/sell — but we're checking endsWith("/sell") via parts
+      }
+
+      if (parts.length === 6 && parts[5] === "sell" && req.method === "POST") {
+        const shareId = parts[4];
+        const payload = verifyToken(req);
+        if (!payload || payload.userId !== userId) {
+          sendJson(res, 401, { error: "Unauthorized" });
+          return;
+        }
+        const result = await db.sellUserShare(shareId, userId);
+        if (!result) { sendJson(res, 404, { error: "share not found" }); return; }
+        sendJson(res, 200, result);
+        return;
+      }
+
+      sendJson(res, 405, { error: "Method not allowed" });
+      return;
+    }
+
+    // GET /conversations  — get conversations for authenticated user
+    // GET /conversations/:id/messages
+    // POST /conversations/:id/messages
+    if (url.pathname === "/conversations") {
+      if (req.method !== "GET") { sendJson(res, 405, { error: "Method not allowed" }); return; }
+      const payload = verifyToken(req);
+      if (!payload) { sendJson(res, 401, { error: "Unauthorized" }); return; }
+      const conversations = await db.getConversationsByUser(payload.userId);
+      sendJson(res, 200, conversations);
+      return;
+    }
+
+    if (url.pathname.startsWith("/conversations/")) {
+      const parts = url.pathname.split("/"); // ["", "conversations", id, "messages"]
+      const convId = parts[2];
+
+      if (parts[3] === "messages") {
+        if (req.method === "GET") {
+          const payload = verifyToken(req);
+          if (!payload) { sendJson(res, 401, { error: "Unauthorized" }); return; }
+          const messages = await db.getMessagesByConversation(convId);
+          sendJson(res, 200, messages);
+          return;
+        }
+
+        if (req.method === "POST") {
+          const payload = verifyToken(req);
+          if (!payload) { sendJson(res, 401, { error: "Unauthorized" }); return; }
+          let body;
+          try { body = await parseJsonBody(req); }
+          catch (err) {
+            if (err && err.statusCode) { sendJson(res, err.statusCode, { error: err.message }); return; }
+            throw err;
+          }
+          const text = typeof body.text === "string" ? body.text.trim() : "";
+          if (!text) { sendJson(res, 400, { error: "text required" }); return; }
+          const msg = await db.createMessage(convId, payload.userId, text);
+          sendJson(res, 201, msg);
+          return;
+        }
+
+        sendJson(res, 405, { error: "Method not allowed" });
+        return;
+      }
+
+      sendJson(res, 404, { error: "not found" });
+      return;
+    }
+
     sendJson(res, 404, { error: "not found" });
   } catch (err) {
     console.error("request handling failed:", err);
@@ -478,6 +577,16 @@ io.on("connection", async (socket) => {
         lat,
         lon,
       });
+
+      if (userId) {
+        await db.updateUserLocation(userId, lat, lon);
+
+        // Find the closest hotspot the user is physically inside
+        const nearest = hotspots[0];
+        const insideHotspot = nearest && nearest.distance_meters <= (nearest.radius_meters ?? 80);
+        const hotspotId = insideHotspot ? (nearest._id || nearest.id) : null;
+        await db.updateUserHotspot(userId, hotspotId ? String(hotspotId) : null);
+      }
     } catch (err) {
       console.error("update_location failed:", err);
     }
