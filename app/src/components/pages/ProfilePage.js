@@ -2,11 +2,13 @@
 
 import { useState, useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
+import useSocket from "@/lib/useSocket";
 import { fetchUserStats } from "@/lib/api";
 import { CATEGORY_COLORS } from "@/lib/categories";
 
 export default function ProfilePage() {
   const { user, logout } = useAuth();
+  const { socket } = useSocket(user);
   const [stats, setStats] = useState(null);
   const [statsError, setStatsError] = useState("");
   const userId = user?.id || null;
@@ -32,6 +34,18 @@ export default function ProfilePage() {
       isCancelled = true;
     };
   }, [userId]);
+
+  // Live update when any quest is completed
+  useEffect(() => {
+    if (!socket || !userId) return;
+    const onQuestCompleted = () => {
+      fetchUserStats(userId)
+        .then((data) => { setStats(data); setStatsError(""); })
+        .catch(() => {});
+    };
+    socket.on("quest_completed", onQuestCompleted);
+    return () => socket.off("quest_completed", onQuestCompleted);
+  }, [socket, userId]);
 
   const firstLetter = user?.username?.charAt(0).toUpperCase() || "?";
   const joyCoins = stats?.joy_coins ?? user?.joy_coins ?? 0;

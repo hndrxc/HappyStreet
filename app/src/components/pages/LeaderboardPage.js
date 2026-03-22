@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { fetchLeaderboard } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
+import useSocket from "@/lib/useSocket";
 
 const SORT_OPTIONS = [
   { id: "joy_coins", label: "JoyCoins" },
@@ -14,6 +15,7 @@ export default function LeaderboardPage() {
   const [loading, setLoading] = useState(true);
   const [sortBy, setSortBy] = useState("joy_coins");
   const { user } = useAuth();
+  const { socket } = useSocket(user);
 
   useEffect(() => {
     fetchLeaderboard()
@@ -21,6 +23,18 @@ export default function LeaderboardPage() {
       .catch(() => setData([]))
       .finally(() => setLoading(false));
   }, []);
+
+  // Live update when any quest is completed
+  useEffect(() => {
+    if (!socket) return;
+    const onQuestCompleted = () => {
+      fetchLeaderboard()
+        .then((result) => setData(Array.isArray(result) ? result : []))
+        .catch(() => {});
+    };
+    socket.on("quest_completed", onQuestCompleted);
+    return () => socket.off("quest_completed", onQuestCompleted);
+  }, [socket]);
 
   const sortedData = useMemo(() => {
     const sorted = [...data];

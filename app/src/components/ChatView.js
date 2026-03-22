@@ -93,7 +93,6 @@ export default function ChatView({
 
   const handleDoneConfirm = () => {
     setShowDoneConfirm(false);
-    // Show happiness rating modal
     setRatingQuest({
       id: questId,
       _id: questId,
@@ -128,9 +127,9 @@ export default function ChatView({
   };
 
   return (
-    <div className="page-shell bg-base">
+    <div className="flex flex-col h-full bg-base">
       {/* Header */}
-      <header className="page-header bg-surface border-b border-border flex items-center gap-2 shrink-0">
+      <header className="shrink-0 bg-surface border-b border-border px-4 py-3 flex items-center gap-2">
         <button
           onClick={onBack}
           className="w-9 h-9 flex items-center justify-center rounded-xl text-text-secondary hover:text-text-primary hover:bg-base transition-colors"
@@ -155,54 +154,57 @@ export default function ChatView({
       </header>
 
       {isLocked && (
-        <div className="px-4 py-3 bg-base-darker border-b border-border flex items-center justify-center gap-2 text-text-muted shrink-0">
+        <div className="shrink-0 px-4 py-3 bg-base-darker border-b border-border flex items-center justify-center gap-2 text-text-muted">
           <LockIcon className="w-4 h-4" />
           <span className="text-sm">This conversation is complete</span>
         </div>
       )}
 
-      {/* Messages */}
-      <div className="page-scroll scrollbar-hide" ref={scrollRef}>
-        <div className="page-content space-y-3">
-          {messages.length === 0 && (
-            <p className="text-text-muted text-sm text-center py-8">
-              No messages yet. Say hello!
-            </p>
-          )}
-          {messages.map((msg) => {
-            const isMine = String(msg.senderId) === String(currentUserId);
-            return (
+      {/* Messages — scrollable area fills the middle */}
+      <div
+        className="flex-1 min-h-0 overflow-y-auto scrollbar-hide px-4 py-3 space-y-3"
+        ref={scrollRef}
+      >
+        {messages.length === 0 && (
+          <p className="text-text-muted text-sm text-center py-8">
+            No messages yet. Say hello!
+          </p>
+        )}
+        {messages.map((msg) => {
+          const isMine = String(msg.senderId) === String(currentUserId);
+          return (
+            <div
+              key={msg.id}
+              className={`flex ${isMine ? "justify-end" : "justify-start"}`}
+            >
               <div
-                key={msg.id}
-                className={`flex ${isMine ? "justify-end" : "justify-start"}`}
+                className={`max-w-[80%] px-4 py-2.5 rounded-2xl ${
+                  isMine
+                    ? "bg-accent text-text-on-accent rounded-br-md"
+                    : "bg-surface border border-border text-text-primary rounded-bl-md"
+                }`}
               >
-                <div
-                  className={`max-w-[80%] px-4 py-2.5 rounded-2xl ${
-                    isMine
-                      ? "bg-accent text-text-on-accent rounded-br-md"
-                      : "bg-surface border border-border text-text-primary rounded-bl-md"
+                <p className="text-[15px] break-words whitespace-pre-wrap [word-break:break-word]">
+                  {msg.text}
+                </p>
+                <p
+                  className={`text-[11px] mt-1 ${
+                    isMine ? "text-text-on-accent/70" : "text-text-muted"
                   }`}
                 >
-                  <p className="text-[15px] break-words whitespace-pre-wrap">{msg.text}</p>
-                  <p
-                    className={`text-[11px] mt-1 ${
-                      isMine ? "text-text-on-accent/70" : "text-text-muted"
-                    }`}
-                  >
-                    {formatTime(msg.timestamp)}
-                  </p>
-                </div>
+                  {formatTime(msg.timestamp)}
+                </p>
               </div>
-            );
-          })}
-        </div>
+            </div>
+          );
+        })}
       </div>
 
-      {/* Chat input — Instagram-style */}
+      {/* Chat input — Instagram-style, always at bottom */}
       {!isLocked && (
         <form
           onSubmit={handleSend}
-          className="bg-surface border-t border-border flex items-end gap-2 px-3 py-2 shrink-0"
+          className="shrink-0 relative z-10 bg-surface border-t border-border flex items-end gap-2 px-3 py-2"
         >
           <input
             ref={inputRef}
