@@ -377,6 +377,10 @@ async function getUser(userId) {
   return await db.collection("userTable").findOne({ _id: new ObjectId(userId) });
 }
 
+async function getUserByUsername(username) {
+  return await db.collection("userTable").findOne({ username });
+}
+
 async function createUser(username, pword_hash) {
   const result = await db.collection("userTable").insertOne({ username, pword_hash, balance: 100, lat: null, lon: null, collections: [] });
   return await db.collection("userTable").findOne({ _id: result.insertedId });
@@ -460,7 +464,7 @@ module.exports = {
   isValidCategory,
   connect,
   getQuests, createQuest, completeQuest, getNearbyQuests,
-  getUser, createUser, updateUserLocation, updateUserBalance,
+  getUser, getUserByUsername, createUser, updateUserLocation, updateUserBalance,
   getHotspots, createHotspot, getHotspotById, getNearbyHotspots, removeRecipientFromQueue,
   getTunnel, createTunnel, updateTunnelStatus,
 };
