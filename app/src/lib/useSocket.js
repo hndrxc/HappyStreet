@@ -34,9 +34,7 @@ export default function useSocket() {
     const onHotspotsInit = (hotspots) => {
       // TODO: render hotspots on map
     };
-    const onHotspotUpdated = ({ hotspot_id, name, questq_ids }) => {
-      // TODO: update hotspot queue in real time
-    };
+    
     const onQuestCompleted = ({ quest, by }) => {
       console.log(`${by} just completed: ${quest.title}`);
     };
@@ -45,7 +43,7 @@ export default function useSocket() {
     socket.on("disconnect", onDisconnect);
     socket.on("quests_init", onQuestsInit);
     socket.on("hotspots_init", onHotspotsInit);
-    socket.on("hotspot_updated", onHotspotUpdated);
+    
     socket.on("quest_completed", onQuestCompleted);
     
 
@@ -70,7 +68,7 @@ export default function useSocket() {
       socket.off("disconnect", onDisconnect);
       socket.off("quests_init", onQuestsInit);
       socket.off("hotspots_init", onHotspotsInit);
-      socket.off("hotspot_updated", onHotspotUpdated);
+      
       socket.off("quest_completed", onQuestCompleted);
       if (watchId) navigator.geolocation.clearWatch(watchId);
       refCount--;

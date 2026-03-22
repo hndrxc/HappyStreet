@@ -317,6 +317,28 @@ socket.on("update_location", async ({ lat, lon }) => {
   socket.emit("hotspots_init", hotspots);
 });
 
+
+socket.on("join_quest", async ({ questId, userId, hotspotId }) => {
+  try {
+    await db.collection("hotspotTable").updateOne(
+      { _id: new ObjectId(hotspotId), "questq_ids.quest_id": questId },
+      { $addToSet: { "questq_ids.$[elem].recipient_ids": userId } },
+      { arrayFilters: [{ "elem.quest_id": questId }] }
+    );
+
+    const hotspot = await db.getHotspotById(hotspotId);
+    io.emit("hotspot_updated", {
+      hotspot_id: hotspotId,
+      name: hotspot.name,
+      questq_ids: hotspot.questq_ids
+    });
+  } catch (err) {
+    console.error("join_quest failed:", err);
+  }
+});
+
+
+
 socket.on("complete_quest", async ({ questId, userId }) => {
   try {
     const updated = await db.completeQuest(questId);
