@@ -7,18 +7,19 @@ const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(() => {
+    if (typeof window === "undefined") return true;
+    return Boolean(localStorage.getItem("happystreet_token"));
+  });
 
   useEffect(() => {
     const token = localStorage.getItem("happystreet_token");
-    if (token) {
-      authMe(token).then((userData) => {
-        if (userData) setUser(userData);
-        else localStorage.removeItem("happystreet_token");
-      }).finally(() => setIsLoading(false));
-    } else {
-      setIsLoading(false);
-    }
+    if (!token) return;
+
+    authMe(token).then((userData) => {
+      if (userData) setUser(userData);
+      else localStorage.removeItem("happystreet_token");
+    }).finally(() => setIsLoading(false));
   }, []);
 
   const login = async (username, password) => {

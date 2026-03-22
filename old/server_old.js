@@ -207,8 +207,6 @@ async function requestHandler(req, res) {
         id: user._id.toString(),
         username: user.username,
         balance: user.balance,
-        joy_coins: user.joy_coins || 0,
-        total_completions: user.total_completions || 0,
       });
       return;
     }
@@ -337,47 +335,6 @@ async function requestHandler(req, res) {
       return;
     }
 
-    if (url.pathname === "/hotspots") {
-      if (req.method === "POST") {
-        let body;
-        try {
-          body = await parseJsonBody(req);
-        } catch (err) {
-          if (err && err.statusCode) {
-            sendJson(res, err.statusCode, { error: err.message });
-            return;
-          }
-          throw err;
-        }
-
-        const name = typeof body.name === "string" ? body.name.trim() : "";
-        const lat = parseFloat(body.lat);
-        const lon = parseFloat(body.lon);
-        if (!name) {
-          sendJson(res, 400, { error: "name required" });
-          return;
-        }
-        if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
-          sendJson(res, 400, { error: "valid lat and lon required" });
-          return;
-        }
-        if (lat < -90 || lat > 90 || lon < -180 || lon > 180) {
-          sendJson(res, 400, { error: "lat must be -90..90, lon must be -180..180" });
-          return;
-        }
-
-        const hotspot = await db.createHotspot(name, lat, lon, {
-          description: body.description || "",
-          radius_meters: body.radius_meters || 500,
-          category_bias: body.category_bias || null,
-        });
-        sendJson(res, 201, hotspot);
-        return;
-      }
-      sendJson(res, 405, { error: "Method not allowed" });
-      return;
-    }
-
     if (url.pathname.startsWith("/hotspots/")) {
       const id = url.pathname.slice("/hotspots/".length);
       if (req.method === "GET") {
@@ -393,47 +350,6 @@ async function requestHandler(req, res) {
         return;
       }
       sendJson(res, 405, { error: "Method not allowed" });
-      return;
-    }
-
-    // --- Market routes ---
-    if (url.pathname === "/market") {
-      if (req.method !== "GET") { sendJson(res, 405, { error: "Method not allowed" }); return; }
-      const stocks = await db.getAllStocks();
-      sendJson(res, 200, stocks);
-      return;
-    }
-
-    if (url.pathname.startsWith("/market/")) {
-      const ticker = url.pathname.slice("/market/".length).toUpperCase();
-      if (req.method !== "GET") { sendJson(res, 405, { error: "Method not allowed" }); return; }
-      const stock = await db.getStockByTicker(ticker);
-      if (!stock) { sendJson(res, 404, { error: "stock not found" }); return; }
-      sendJson(res, 200, stock);
-      return;
-    }
-
-    if (url.pathname === "/categories") {
-      if (req.method !== "GET") { sendJson(res, 405, { error: "Method not allowed" }); return; }
-      const cats = await db.getCategories();
-      sendJson(res, 200, cats);
-      return;
-    }
-
-    if (url.pathname === "/leaderboard") {
-      if (req.method !== "GET") { sendJson(res, 405, { error: "Method not allowed" }); return; }
-      const leaders = await db.getLeaderboard();
-      sendJson(res, 200, leaders);
-      return;
-    }
-
-    if (url.pathname.startsWith("/users/") && url.pathname.endsWith("/stats")) {
-      const parts = url.pathname.split("/");
-      const userId = parts[2];
-      if (req.method !== "GET") { sendJson(res, 405, { error: "Method not allowed" }); return; }
-      const stats = await db.getUserStats(userId);
-      if (!stats) { sendJson(res, 404, { error: "user not found" }); return; }
-      sendJson(res, 200, stats);
       return;
     }
 
@@ -454,9 +370,8 @@ io.on("connection", async (socket) => {
   console.log("client connected:", socket.id);
   try {
     socket.emit("quests_init", await db.getQuests());
-    socket.emit("market_snapshot", await db.getAllStocks());
   } catch (err) {
-    console.error("failed to emit init data:", err);
+    console.error("failed to emit quests_init:", err);
   }
 
   socket.on("update_location", async ({ lat, lon }) => {
@@ -465,28 +380,6 @@ io.on("connection", async (socket) => {
       socket.emit("hotspots_init", hotspots);
     } catch (err) {
       console.error("update_location failed:", err);
-    }
-  });
-
-  socket.on("join_quest", async (payload) => {
-    try {
-      const questId = payload?.questId;
-      const userId = payload?.userId;
-      const hotspotId = payload?.hotspotId;
-      if (!questId || !userId || !hotspotId) return;
-
-      const hotspot = await db.joinQuestQueue(hotspotId, questId, userId);
-      if (!hotspot) return;
-
-      io.emit("hotspot_updated", {
-        hotspot_id: hotspot._id || hotspot.id,
-        name: hotspot.name,
-        heat_score: hotspot.heat_score || 0,
-        questq_ids: hotspot.questq_ids || [],
-        quest_ids: hotspot.quest_ids || [],
-      });
-    } catch (err) {
-      console.error("join_quest failed:", err);
     }
   });
 
@@ -499,6 +392,7 @@ io.on("connection", async (socket) => {
           ? (payload?.recipientId ?? payload?.userId ?? null)
           : null;
 
+      // Enforce recipient queue semantics: no completion if nobody can verify/receive.
       const queueAssignment = await db.acquireQuestRecipientForCompletion(
         questId,
         requestedRecipientId
@@ -511,13 +405,7 @@ io.on("connection", async (socket) => {
         return;
       }
 
-      const happinessRating = typeof payload === "object" ? payload?.happinessRating : null;
-
-      const updated = await db.completeQuest(questId, {
-        happinessRating: happinessRating || null,
-        userId: queueAssignment.recipient_id || null,
-        hotspotId: queueAssignment.hotspot_id || null,
-      });
+      const updated = await db.completeQuest(questId);
       if (!updated) {
         await db.requeueQuestRecipient(
           queueAssignment.hotspot_id,
@@ -536,8 +424,6 @@ io.on("connection", async (socket) => {
         quest: updated,
         by: socket.id,
         recipient_id: queueAssignment.recipient_id,
-        happinessRating: happinessRating || null,
-        coinsEarned: updated.coin_reward || 0,
       });
       if (queueAssignment.hotspot) {
         io.emit("hotspot_updated", {
@@ -547,19 +433,6 @@ io.on("connection", async (socket) => {
           questq_ids: queueAssignment.hotspot.questq_ids || [],
           quest_ids: queueAssignment.hotspot.quest_ids || [],
         });
-      }
-
-      // Recalculate stock price for the completed quest's category
-      if (updated.category) {
-        try {
-          const { recalculateStockPrice } = require("./market/pricing");
-          const stockUpdate = await recalculateStockPrice(db.getDb(), updated.category);
-          if (stockUpdate) {
-            io.emit("stock_updated", stockUpdate);
-          }
-        } catch (priceErr) {
-          console.error("stock recalculation failed:", priceErr);
-        }
       }
     } catch (err) {
       console.error("complete_quest failed:", err);

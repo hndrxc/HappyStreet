@@ -2,11 +2,12 @@
 // MOCK DATA - Replace with real API calls later
 // ============================================
 
+// Kept for MessagesPage (not yet migrated to backend)
 export const currentUser = {
   id: "user_001",
   username: "happywalker",
   avatar: null,
-  balance: 2847.50,
+  balance: 0,
 };
 
 // // --- Backend-shaped hotspot data (Phase 2) ---
@@ -398,61 +399,3 @@ export const chatMessages = {
   ],
 };
 
-export const leaderboard = {
-  global: [
-    { rank: 1, userId: "user_010", username: "questmaster", balance: 15420.00, totalShares: 234 },
-    { rank: 2, userId: "user_011", username: "helperhero", balance: 12850.50, totalShares: 198 },
-    { rank: 3, userId: "user_012", username: "kindspirit", balance: 9840.25, totalShares: 156 },
-    { rank: 4, userId: "user_013", username: "goodvibes", balance: 7230.00, totalShares: 123 },
-    { rank: 5, userId: "user_001", username: "happywalker", balance: 2847.50, totalShares: 45 },
-    { rank: 6, userId: "user_014", username: "sunnydays", balance: 2340.75, totalShares: 67 },
-    { rank: 7, userId: "user_015", username: "friendlyface", balance: 1890.00, totalShares: 34 },
-    { rank: 8, userId: "user_016", username: "warmheart", balance: 1450.25, totalShares: 28 },
-    { rank: 9, userId: "user_017", username: "joygiver", balance: 980.50, totalShares: 19 },
-    { rank: 10, userId: "user_018", username: "cheerful1", balance: 650.00, totalShares: 12 },
-  ],
-  interacted: [
-    { rank: 1, userId: "user_002", username: "coffeelover", balance: 3240.00, totalShares: 56 },
-    { rank: 2, userId: "user_003", username: "petpal", balance: 2180.50, totalShares: 43 },
-    { rank: 3, userId: "user_005", username: "quicksend", balance: 1560.25, totalShares: 31 },
-    { rank: 4, userId: "user_004", username: "helpinghands", balance: 890.00, totalShares: 18 },
-    { rank: 5, userId: "user_006", username: "newbie42", balance: 450.75, totalShares: 8 },
-  ],
-};
-
-export const userShares = [
-  {
-    id: "share_001",
-    questId: "quest_001",
-    questTitle: "Coffee Run",
-    shareCount: 15,
-    currentValue: 12.50,
-  },
-  {
-    id: "share_002",
-    questId: "quest_003",
-    questTitle: "Pet Sitting",
-    shareCount: 8,
-    currentValue: 45.00,
-  },
-  {
-    id: "share_003",
-    questId: "quest_004",
-    questTitle: "Package Delivery",
-    shareCount: 22,
-    currentValue: 8.75,
-  },
-  {
-    id: "share_004",
-    questId: "quest_005",
-    questTitle: "Tech Help",
-    shareCount: 5,
-    currentValue: 35.00,
-  },
-];
-
-// Simulated socket state for real-time values
-export const socketSimulation = {
-  isConnected: true,
-  lastUpdate: new Date(),
-};

@@ -34,7 +34,7 @@ export default function HotspotPage() {
         <button
           type="button"
           onClick={() => setShowPostSheet(true)}
-          className="post-quest-btn flex items-center whitespace-nowrap bg-accent text-text-on-accent rounded-full shadow-warm glow-gold font-semibold transition-transform active:scale-95"
+          className="post-quest-btn flex items-center whitespace-nowrap bg-accent text-text-on-accent rounded-full shadow-warm glow-gold font-heading font-semibold transition-transform active:scale-95"
         >
           <PlusIcon className="post-quest-btn-icon" />
           Post a Quest

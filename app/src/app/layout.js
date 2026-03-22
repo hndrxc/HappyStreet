@@ -1,16 +1,15 @@
-import { Inter, Press_Start_2P } from "next/font/google";
+import { Manrope, Space_Grotesk } from "next/font/google";
 import { AuthProvider } from "@/context/AuthContext";
 import "./globals.css";
 
-const inter = Inter({ 
+const manrope = Manrope({
   subsets: ["latin"],
-  variable: "--font-inter",
+  variable: "--font-manrope",
 });
 
-const pressStart = Press_Start_2P({ 
-  weight: "400",
+const spaceGrotesk = Space_Grotesk({
   subsets: ["latin"],
-  variable: "--font-press-start",
+  variable: "--font-space-grotesk",
 });
 
 export const metadata = {
@@ -28,10 +27,10 @@ export const viewport = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en" className={`${inter.variable} ${pressStart.variable}`}>
+    <html lang="en" className={`${manrope.variable} ${spaceGrotesk.variable}`}>
       <body className="font-sans antialiased">
-          <AuthProvider>{children}</AuthProvider>
-        </body>
+        <AuthProvider>{children}</AuthProvider>
+      </body>
     </html>
   );
 }

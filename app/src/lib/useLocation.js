@@ -3,9 +3,16 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 
 export default function useLocation() {
+  const hasGeolocation =
+    typeof window !== "undefined" &&
+    typeof navigator !== "undefined" &&
+    "geolocation" in navigator;
+
   const [location, setLocation] = useState(null);
-  const [error, setError] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(
+    hasGeolocation ? null : "Geolocation is not supported by your browser."
+  );
+  const [loading, setLoading] = useState(hasGeolocation);
   const [watching, setWatching] = useState(false);
   const watchIdRef = useRef(null);
 
@@ -32,21 +39,17 @@ export default function useLocation() {
 
   // One-shot position on mount
   useEffect(() => {
-    if (typeof window === "undefined" || !("geolocation" in navigator)) {
-      setError("Geolocation is not supported by your browser.");
-      setLoading(false);
-      return;
-    }
+    if (!hasGeolocation) return;
 
     navigator.geolocation.getCurrentPosition(handleSuccess, handleError, {
       enableHighAccuracy: true,
       timeout: 10000,
       maximumAge: 60000,
     });
-  }, [handleSuccess, handleError]);
+  }, [hasGeolocation, handleSuccess, handleError]);
 
   const startWatching = useCallback(() => {
-    if (typeof window === "undefined" || !("geolocation" in navigator)) return;
+    if (!hasGeolocation) return;
     if (watchIdRef.current !== null) return;
 
     const id = navigator.geolocation.watchPosition(handleSuccess, handleError, {
@@ -56,7 +59,7 @@ export default function useLocation() {
     });
     watchIdRef.current = id;
     setWatching(true);
-  }, [handleSuccess, handleError]);
+  }, [hasGeolocation, handleSuccess, handleError]);
 
   const stopWatching = useCallback(() => {
     if (watchIdRef.current !== null) {

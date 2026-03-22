@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ArrowLeftIcon, SendIcon, LockIcon, CheckIcon } from "./icons";
 
 export default function ChatView({ 
@@ -35,12 +35,11 @@ export default function ChatView({
   };
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden bg-base">
-      {/* Header */}
-      <header className="px-2 py-3 bg-surface border-b border-border flex items-center gap-2">
+    <div className="page-shell bg-base">
+      <header className="page-header bg-surface border-b border-border flex items-center gap-2">
         <button 
           onClick={onBack}
-          className="p-2 text-text-secondary hover:text-text-primary transition-colors"
+          className="w-9 h-9 flex items-center justify-center rounded-xl text-text-secondary hover:text-text-primary hover:bg-base transition-colors"
         >
           <ArrowLeftIcon className="w-5 h-5" />
         </button>
@@ -53,14 +52,13 @@ export default function ChatView({
         {isRecipient && !isLocked && (
           <button
             onClick={() => setShowConfirm(true)}
-            className="px-4 py-2 bg-accent text-text-on-accent text-sm font-semibold rounded-lg shadow-warm-sm transition-transform active:scale-95"
+            className="min-h-[2.5rem] px-4 bg-accent text-text-on-accent text-sm font-semibold rounded-lg shadow-warm-sm transition-transform active:scale-95"
           >
             Done
           </button>
         )}
       </header>
 
-      {/* Locked Banner */}
       {isLocked && (
         <div className="px-4 py-3 bg-base-darker border-b border-border flex items-center justify-center gap-2 text-text-muted">
           <LockIcon className="w-4 h-4" />
@@ -68,8 +66,8 @@ export default function ChatView({
         </div>
       )}
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto scrollbar-hide p-4 space-y-3">
+      <div className="page-scroll scrollbar-hide">
+        <div className="page-content space-y-3">
         {messages.map((msg) => {
           const isMine = msg.senderId === currentUserId;
           return (
@@ -85,19 +83,19 @@ export default function ChatView({
                 }`}
               >
                 <p className="text-sm">{msg.text}</p>
-                <p className={`text-[10px] mt-1 ${isMine ? "text-text-on-accent/70" : "text-text-muted"}`}>
+                <p className={`text-xs mt-1 ${isMine ? "text-text-on-accent/70" : "text-text-muted"}`}>
                   {formatTime(msg.timestamp)}
                 </p>
               </div>
             </div>
           );
         })}
+        </div>
       </div>
 
-      {/* Input Bar */}
       <form 
         onSubmit={handleSend}
-        className="px-4 py-3 bg-surface border-t border-border flex items-center gap-3"
+        className="page-header bg-surface border-t border-border flex items-center gap-3"
       >
         <input
           type="text"
@@ -105,18 +103,17 @@ export default function ChatView({
           onChange={(e) => setNewMessage(e.target.value)}
           placeholder={isLocked ? "Chat is locked" : "Type a message..."}
           disabled={isLocked}
-          className="flex-1 px-4 py-3 bg-base rounded-xl border border-border text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex-1 min-h-[var(--control-height)] px-4 bg-base rounded-xl border border-border text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         />
         <button
           type="submit"
           disabled={!newMessage.trim() || isLocked}
-          className="p-3 bg-accent text-text-on-accent rounded-xl transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-11 h-11 bg-accent text-text-on-accent rounded-xl transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
         >
           <SendIcon className="w-5 h-5" />
         </button>
       </form>
 
-      {/* Confirm Done Modal */}
       {showConfirm && (
         <ConfirmDoneModal 
           onConfirm={handleDone}
@@ -130,8 +127,7 @@ export default function ChatView({
 function ConfirmDoneModal({ onConfirm, onCancel }) {
   const [canConfirm, setCanConfirm] = useState(false);
 
-  // Enable confirm button after 1 second
-  useState(() => {
+  useEffect(() => {
     const timer = setTimeout(() => setCanConfirm(true), 1000);
     return () => clearTimeout(timer);
   }, []);
@@ -142,12 +138,12 @@ function ConfirmDoneModal({ onConfirm, onCancel }) {
         className="fixed inset-0 bg-text-primary/30 z-50"
         onClick={onCancel}
       />
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
+      <div className="modal-center z-50">
         <div className="bg-surface rounded-2xl p-6 shadow-warm max-w-sm w-full animate-fade-in">
           <div className="w-14 h-14 rounded-full bg-accent/10 flex items-center justify-center mx-auto mb-4">
             <CheckIcon className="w-7 h-7 text-accent" />
           </div>
-          <h3 className="font-pixel text-[12px] text-text-primary text-center mb-2">
+          <h3 className="font-heading text-base text-text-primary text-center mb-2">
             Mark as Done?
           </h3>
           <p className="text-text-secondary text-sm text-center mb-6">

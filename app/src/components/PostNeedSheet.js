@@ -78,14 +78,14 @@ export default function PostNeedSheet({ isOpen, onClose }) {
 
       {/* Modal */}
       <div
-        className={`fixed inset-0 z-[1201] flex items-center justify-center p-4 transition-all duration-300 ease-out ${
+        className={`modal-center z-[1201] transition-all duration-300 ease-out ${
           isAnimating ? "opacity-100 scale-100" : "opacity-0 scale-95"
         }`}
       >
         <div className="post-need-box w-full max-w-md bg-surface rounded-3xl shadow-warm border border-border">
           {/* Header */}
           <div className="post-need-header flex items-center justify-between">
-            <h2 className="font-pixel text-[12px] text-text-primary">Post a Quest</h2>
+            <h2 className="font-heading text-base text-text-primary">Post a Quest</h2>
             <button
               onClick={onClose}
               className="text-text-muted hover:text-text-primary transition-colors"
@@ -124,7 +124,7 @@ export default function PostNeedSheet({ isOpen, onClose }) {
                       key={cat}
                       type="button"
                       onClick={() => setCategory(cat)}
-                      className="post-need-pill rounded-full text-xs font-medium capitalize transition-all"
+                      className="post-need-pill rounded-full font-medium capitalize transition-all"
                       style={{
                         backgroundColor: isActive ? color : color + "15",
                         color: isActive ? "#fff" : color,
@@ -141,7 +141,7 @@ export default function PostNeedSheet({ isOpen, onClose }) {
             <button
               type="submit"
               disabled={!title.trim() || isSubmitting}
-              className="post-need-submit bg-accent text-text-on-accent font-semibold rounded-xl shadow-warm transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+              className="post-need-submit bg-accent text-text-on-accent font-heading font-semibold rounded-xl shadow-warm transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isSubmitting ? "Posting..." : "Post Quest"}
             </button>

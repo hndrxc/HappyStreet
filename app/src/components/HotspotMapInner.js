@@ -344,7 +344,7 @@ export default function HotspotMapInner({ onSelectHotspot, focusHotspotId }) {
               <div className="flex items-center justify-between mb-2">
                 {selectedHotspot.category_bias && (
                   <span
-                    className="text-[10px] font-medium px-2 py-0.5 rounded-full"
+                    className="text-xs font-semibold px-2 py-0.5 rounded-full capitalize"
                     style={{
                       backgroundColor: getHotspotColor(selectedHotspot) + "18",
                       color: getHotspotColor(selectedHotspot),
@@ -354,14 +354,14 @@ export default function HotspotMapInner({ onSelectHotspot, focusHotspotId }) {
                   </span>
                 )}
                 {selectedHotspot.heat_score > 0 && (
-                  <span className="text-[10px] text-text-muted">
+                  <span className="text-xs text-text-muted">
                     {selectedHotspot.heat_score} recent completions
                   </span>
                 )}
               </div>
 
               {/* Name + description */}
-              <h3 className="font-pixel text-[12px] text-text-primary mb-1">
+              <h3 className="font-heading text-base text-text-primary mb-1">
                 {selectedHotspot.name}
               </h3>
               {selectedHotspot.description && (
@@ -389,13 +389,13 @@ export default function HotspotMapInner({ onSelectHotspot, focusHotspotId }) {
                     onSelectHotspot(selectedHotspot);
                     setSelectedHotspot(null);
                   }}
-                  className="flex-1 bg-accent text-text-on-accent py-3 rounded-xl font-semibold text-sm transition-transform active:scale-[0.98]"
+                  className="flex-1 bg-accent text-text-on-accent min-h-[var(--control-height)] rounded-xl font-semibold text-sm transition-transform active:scale-[0.98]"
                 >
                   View Quests
                 </button>
                 <button
                   onClick={() => setSelectedHotspot(null)}
-                  className="px-5 py-3 rounded-xl border border-border text-text-secondary text-sm transition-colors hover:bg-base-darker"
+                  className="px-5 min-h-[var(--control-height)] rounded-xl border border-border text-text-secondary text-sm transition-colors hover:bg-base-darker"
                 >
                   Close
                 </button>
