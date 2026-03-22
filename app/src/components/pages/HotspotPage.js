@@ -30,13 +30,13 @@ export default function HotspotPage() {
       )}
 
       {/* Floating Post Button */}
-      <div className="absolute top-4 left-1/2 z-[1100] -translate-x-1/2 md:top-6">
+      <div className="post-quest-btn-wrapper">
         <button
           type="button"
           onClick={() => setShowPostSheet(true)}
-          className="flex items-center gap-2 whitespace-nowrap bg-accent text-text-on-accent px-8 py-4 rounded-full shadow-warm glow-gold font-semibold text-sm transition-transform active:scale-95"
+          className="post-quest-btn flex items-center whitespace-nowrap bg-accent text-text-on-accent rounded-full shadow-warm glow-gold font-semibold transition-transform active:scale-95"
         >
-          <PlusIcon className="w-5 h-5" />
+          <PlusIcon className="post-quest-btn-icon" />
           Post a Quest
         </button>
       </div>

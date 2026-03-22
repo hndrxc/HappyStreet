@@ -4,7 +4,7 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import { MapContainer, TileLayer, CircleMarker, Circle, useMap } from "react-leaflet";
 import useLocation from "@/lib/useLocation";
 import useSocket from "@/lib/useSocket";
-import { fetchNearbyHotspots, geoToLeaflet } from "@/lib/api";
+import { fetchNearbyHotspots, geoToLeaflet, fetchHotspotById } from "@/lib/api";
 import { hotspots as mockHotspots, CATEGORY_COLORS } from "@/lib/mockData";
 import { LocationCrosshairIcon } from "@/components/icons";
 
@@ -82,13 +82,31 @@ function MapResizeSync() {
   return null;
 }
 
-export default function HotspotMapInner({ onSelectHotspot }) {
+export default function HotspotMapInner({ onSelectHotspot, focusHotspotId }) {
   const { location, error, loading } = useLocation();
   const { socket } = useSocket();
   const [hotspotsList, setHotspotsList] = useState(mockHotspots);
   const [selectedHotspot, setSelectedHotspot] = useState(null);
   const [pingHotspotId, setPingHotspotId] = useState(null);
   const lastFetchPosRef = useRef(null);
+  const focusFetchedRef = useRef(null);
+
+  // Fetch and focus a specific hotspot by ID
+  useEffect(() => {
+    if (!focusHotspotId || focusFetchedRef.current === focusHotspotId) return;
+    focusFetchedRef.current = focusHotspotId;
+
+    fetchHotspotById(focusHotspotId)
+      .then((hotspot) => {
+        if (!hotspot) return;
+        setHotspotsList((prev) => {
+          const exists = prev.some((h) => (h._id || h.id) === (hotspot._id || hotspot.id));
+          return exists ? prev.map((h) => (h._id || h.id) === (hotspot._id || hotspot.id) ? hotspot : h) : [...prev, hotspot];
+        });
+        setSelectedHotspot(hotspot);
+      })
+      .catch(() => {});
+  }, [focusHotspotId]);
 
   const userPos = location
     ? [location.lat, location.lon]
@@ -156,8 +174,15 @@ export default function HotspotMapInner({ onSelectHotspot }) {
     return DEFAULT_CENTER;
   }, []);
 
-  const handleHotspotTap = (hotspot) => {
+  const handleHotspotTap = async (hotspot) => {
+    const id = hotspot._id || hotspot.id;
     setSelectedHotspot(hotspot);
+    try {
+      const full = await fetchHotspotById(id);
+      if (full) setSelectedHotspot(full);
+    } catch {
+      // Keep the local data as fallback
+    }
   };
 
   const questCount = (hotspot) => {

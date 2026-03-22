@@ -14,6 +14,6 @@ const HotspotMapInner = dynamic(() => import("./HotspotMapInner"), {
   ),
 });
 
-export default function HotspotMap({ onSelectHotspot }) {
-  return <HotspotMapInner onSelectHotspot={onSelectHotspot} />;
+export default function HotspotMap({ onSelectHotspot, focusHotspotId }) {
+  return <HotspotMapInner onSelectHotspot={onSelectHotspot} focusHotspotId={focusHotspotId} />;
 }
