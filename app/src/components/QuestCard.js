@@ -1,31 +1,68 @@
 "use client";
 
-import { ChevronRightIcon } from "./icons";
+import { CATEGORY_COLORS, DIFFICULTY_LABELS } from "@/lib/mockData";
+import { formatDistance } from "@/lib/api";
 
-export default function QuestCard({ quest }) {
-  const { title, value, activeNeeds, completions } = quest;
+export default function QuestCard({ quest, onComplete }) {
+  const categoryColor = CATEGORY_COLORS[quest.category] || CATEGORY_COLORS["kindness"];
+  const diffLabel = DIFFICULTY_LABELS[quest.difficulty_tier] || "Med";
 
   return (
-    <div className="bg-surface rounded-2xl p-4 shadow-warm-sm border border-border transition-transform active:scale-[0.98]">
-      <div className="flex items-start justify-between">
-        <div className="flex-1">
-          <h3 className="font-semibold text-text-primary mb-1">{title}</h3>
-          <div className="flex items-center gap-4 text-sm">
-            <span className="text-text-muted">
-              {completions} completed
-            </span>
-            <span className="text-accent font-medium">
-              {activeNeeds} active
-            </span>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="font-pixel text-accent text-[10px]">
-            ${value.toFixed(2)}
+    <div className="bg-surface rounded-2xl border border-border shadow-warm-sm p-4 transition-all">
+      {/* Category + Difficulty pills */}
+      <div className="flex items-center gap-2 mb-2 flex-wrap">
+        {quest.category && (
+          <span
+            className="text-[10px] font-medium px-2 py-0.5 rounded-full capitalize"
+            style={{
+              backgroundColor: categoryColor + "18",
+              color: categoryColor,
+            }}
+          >
+            {quest.category}
           </span>
-          <ChevronRightIcon className="w-5 h-5 text-text-muted" />
-        </div>
+        )}
+        {quest.difficulty_tier && (
+          <span
+            className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${
+              quest.difficulty_tier === "low"
+                ? "bg-success/10 text-success"
+                : quest.difficulty_tier === "high"
+                  ? "bg-error/10 text-error"
+                  : "bg-accent/10 text-accent"
+            }`}
+          >
+            {diffLabel}
+          </span>
+        )}
       </div>
+
+      {/* Title */}
+      <h3 className="text-sm font-medium text-text-primary leading-snug mb-2">
+        {quest.title}
+      </h3>
+
+      {/* Distance + Completions row */}
+      <div className="flex items-center gap-3 text-[11px] text-text-muted mb-3">
+        <span>{formatDistance(quest.distance_meters)}</span>
+        <span className="w-1 h-1 rounded-full bg-border-warm" />
+        <span>{quest.completions || 0} completed</span>
+      </div>
+
+      {/* Complete button */}
+      {onComplete && (
+        <button
+          onClick={() => onComplete(quest)}
+          className="w-full py-2.5 rounded-xl text-sm font-semibold transition-all active:scale-[0.98]"
+          style={{
+            backgroundColor: categoryColor + "12",
+            color: categoryColor,
+            border: `1px solid ${categoryColor}30`,
+          }}
+        >
+          Complete +{quest.coin_reward || 0} JC
+        </button>
+      )}
     </div>
   );
 }

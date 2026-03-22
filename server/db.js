@@ -117,13 +117,13 @@ async function ensureSeedData() {
     );
   }
 
-  // Keep old quest docs compatible with Phase 1 category requirements.
+  // Keep old quest docs compatible
   await quests.updateMany(
     { $or: [{ category: { $exists: false } }, { category: null }] },
     { $set: { category: DEFAULT_CATEGORY, updatedAt: now } }
   );
 
-  // Migrate legacy underscore category names to canonical Phase 1 names.
+  // Migrate legacy underscore category names to canonical names
   for (const [legacy, canonical] of Object.entries(CATEGORY_ALIASES)) {
     await quests.updateMany(
       { category: legacy },
@@ -131,7 +131,7 @@ async function ensureSeedData() {
     );
   }
 
-  // Backfill new fields on quests that predate Phase 1.
+  // Backfill new fields on quests 
   await quests.updateMany(
     { difficulty_tier: { $exists: false } },
     {

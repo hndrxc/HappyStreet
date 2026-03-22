@@ -65,9 +65,7 @@ const conditions = [
   "while standing",
 ];
 
-// Maps each action to its category and difficulty tier.
-// category:   based on action type per CLAUDE.md spec
-// difficulty:  low (<2 min), medium (5-15 min), high (30+ min)
+
 const ACTION_META = {
   "Leave a compliment for":    { category: "kindness",           difficulty_tier: "medium" },
   "Buy a coffee for":          { category: "kindness",           difficulty_tier: "medium" },
