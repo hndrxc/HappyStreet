@@ -436,6 +436,9 @@ async function updateTunnelStatus(tunnelId, status, extra = {}) {
     { returnDocument: "after" }
   );
 }
+async function deleteTunnel(tunnelId) {
+  return await db.collection("tunnelTable").deleteOne({ _id: new ObjectId(tunnelId) });
+}
 
 async function getNearbyHotspots(lat, lon, radius = 2000) {
   return await db.collection("hotspotTable").find({
@@ -466,5 +469,5 @@ module.exports = {
   getQuests, createQuest, completeQuest, getNearbyQuests,
   getUser, getUserByUsername, createUser, updateUserLocation, updateUserBalance,
   getHotspots, createHotspot, getHotspotById, getNearbyHotspots, removeRecipientFromQueue,
-  getTunnel, createTunnel, updateTunnelStatus,
+  getTunnel, createTunnel, updateTunnelStatus, deleteTunnel
 };

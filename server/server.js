@@ -337,7 +337,31 @@ socket.on("join_quest", async ({ questId, userId, hotspotId }) => {
   }
 });
 
+socket.on("quest_failed", async ({ tunnelId, userId }) => {
+  try {
+    const tunnel = await db.getTunnel(tunnelId);
+    if (!tunnel) return;
 
+    if (userId === tunnel.offerer_id) {
+      await db.collection("hotspotTable").updateOne(
+        { _id: new ObjectId(tunnel.hotspot_id), "questq_ids.quest_id": tunnel.quest_id },
+        { $addToSet: { "questq_ids.$[elem].recipient_ids": tunnel.recipient_id } },
+        { arrayFilters: [{ "elem.quest_id": tunnel.quest_id }] }
+      );
+
+      const hotspot = await db.getHotspotById(tunnel.hotspot_id);
+      io.emit("hotspot_updated", {
+        hotspot_id: tunnel.hotspot_id,
+        name: hotspot.name,
+        questq_ids: hotspot.questq_ids
+      });
+    }
+
+    await db.deleteTunnel(tunnelId);
+  } catch (err) {
+    console.error("quest_failed error:", err);
+  }
+});
 
 socket.on("complete_quest", async ({ questId, userId }) => {
   try {
