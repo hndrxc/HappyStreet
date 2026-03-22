@@ -747,7 +747,12 @@ async function getUserByUsername(username) {
 }
 
 async function createUser(username, pword_hash) {
-  const result = await db.collection("userTable").insertOne({ username, pword_hash, balance: 100, lat: null, lon: null, hotspot_id: null, collections: [] });
+  const result = await db.collection("userTable").insertOne({
+    username, pword_hash, balance: 100,
+    lat: null, lon: null, hotspot_id: null, collections: [],
+    joy_coins: 0, total_completions: 0,
+    streak_current: 0, streak_last_date: null,
+  });
   return await db.collection("userTable").findOne({ _id: result.insertedId });
 }
 

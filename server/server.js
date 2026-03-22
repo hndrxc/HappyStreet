@@ -897,7 +897,9 @@ io.on("connection", async (socket) => {
           if (updated.category) {
             try {
               const { recalculateStockPrice } = require("./market/pricing");
+              console.log("[stock] recalculating for category:", updated.category);
               const stockUpdate = await recalculateStockPrice(db.getDb(), updated.category);
+              console.log("[stock] result:", stockUpdate ? `${stockUpdate.ticker} = $${stockUpdate.current_price}` : "null");
               if (stockUpdate) io.emit("stock_updated", stockUpdate);
             } catch (priceErr) {
               console.error("stock recalculation failed:", priceErr);
@@ -966,7 +968,9 @@ io.on("connection", async (socket) => {
       if (updated.category) {
         try {
           const { recalculateStockPrice } = require("./market/pricing");
+          console.log("[stock] recalculating for category:", updated.category);
           const stockUpdate = await recalculateStockPrice(db.getDb(), updated.category);
+          console.log("[stock] result:", stockUpdate ? `${stockUpdate.ticker} = $${stockUpdate.current_price}` : "null");
           if (stockUpdate) {
             io.emit("stock_updated", stockUpdate);
           }

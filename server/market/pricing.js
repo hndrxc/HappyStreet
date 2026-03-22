@@ -38,8 +38,9 @@ async function recalculateStockPrice(db, categoryName) {
     .limit(20)
     .toArray();
 
-  const momentum = recentCompletions.length > 0
-    ? recentCompletions.reduce((sum, c) => sum + c.happiness_rating, 0) / recentCompletions.length
+  const validRatings = recentCompletions.filter(c => c.happiness_rating != null && Number.isFinite(c.happiness_rating));
+  const momentum = validRatings.length > 0
+    ? validRatings.reduce((sum, c) => sum + c.happiness_rating, 0) / validRatings.length
     : 3.0;
 
   // Volume: completions in the last hour

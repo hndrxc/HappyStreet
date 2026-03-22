@@ -86,7 +86,6 @@ export default function ChatView({
     [newMessage, isLocked, sending, socket, conversationId, token]
   );
 
-  // "Done" flow: show confirmation, then show happiness rating
   const handleDoneClick = () => {
     setShowDoneConfirm(true);
   };
@@ -153,6 +152,31 @@ export default function ChatView({
         )}
       </header>
 
+      {/* Chat input — ABOVE messages so it's always visible and never clipped */}
+      {!isLocked && (
+        <form
+          onSubmit={handleSend}
+          className="shrink-0 bg-surface border-b border-border flex items-center gap-2 px-3 py-2"
+        >
+          <input
+            ref={inputRef}
+            type="text"
+            inputMode="text"
+            value={newMessage}
+            onChange={(e) => setNewMessage(e.target.value)}
+            placeholder="Message..."
+            className="flex-1 min-h-[44px] px-4 py-3 bg-base rounded-full border-2 border-border text-base text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/30 transition-colors"
+          />
+          <button
+            type="submit"
+            disabled={!newMessage.trim() || sending}
+            className="w-12 h-12 bg-accent text-text-on-accent rounded-full transition-all active:scale-90 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center shrink-0 shadow-warm-sm"
+          >
+            <SendIcon className="w-5 h-5" />
+          </button>
+        </form>
+      )}
+
       {isLocked && (
         <div className="shrink-0 px-4 py-3 bg-base-darker border-b border-border flex items-center justify-center gap-2 text-text-muted">
           <LockIcon className="w-4 h-4" />
@@ -160,9 +184,9 @@ export default function ChatView({
         </div>
       )}
 
-      {/* Messages — scrollable area fills the middle */}
+      {/* Messages — scrollable area fills remaining space below input */}
       <div
-        className="flex-1 min-h-0 overflow-y-auto scrollbar-hide px-4 py-3 space-y-3"
+        className="flex-1 min-h-0 overflow-y-auto scrollbar-hide px-4 py-4 space-y-4"
         ref={scrollRef}
       >
         {messages.length === 0 && (
@@ -178,17 +202,17 @@ export default function ChatView({
               className={`flex ${isMine ? "justify-end" : "justify-start"}`}
             >
               <div
-                className={`max-w-[80%] px-4 py-2.5 rounded-2xl ${
+                className={`max-w-[80%] px-5 py-3 rounded-2xl ${
                   isMine
                     ? "bg-accent text-text-on-accent rounded-br-md"
                     : "bg-surface border border-border text-text-primary rounded-bl-md"
                 }`}
               >
-                <p className="text-[15px] break-words whitespace-pre-wrap [word-break:break-word]">
+                <p className="text-[15px] leading-relaxed break-words whitespace-pre-wrap [word-break:break-word]">
                   {msg.text}
                 </p>
                 <p
-                  className={`text-[11px] mt-1 ${
+                  className={`text-[11px] mt-1.5 ${
                     isMine ? "text-text-on-accent/70" : "text-text-muted"
                   }`}
                 >
@@ -199,31 +223,6 @@ export default function ChatView({
           );
         })}
       </div>
-
-      {/* Chat input — Instagram-style, always at bottom */}
-      {!isLocked && (
-        <form
-          onSubmit={handleSend}
-          className="shrink-0 relative z-10 bg-surface border-t border-border flex items-end gap-2 px-3 py-2"
-        >
-          <input
-            ref={inputRef}
-            type="text"
-            inputMode="text"
-            value={newMessage}
-            onChange={(e) => setNewMessage(e.target.value)}
-            placeholder="Message..."
-            className="flex-1 min-h-[44px] px-4 py-2.5 bg-base rounded-full border border-border text-[15px] text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 transition-colors"
-          />
-          <button
-            type="submit"
-            disabled={!newMessage.trim() || sending}
-            className="w-11 h-11 bg-accent text-text-on-accent rounded-full transition-all active:scale-90 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center shrink-0 shadow-warm-sm"
-          >
-            <SendIcon className="w-5 h-5" />
-          </button>
-        </form>
-      )}
 
       {/* Done confirmation */}
       {showDoneConfirm && (
