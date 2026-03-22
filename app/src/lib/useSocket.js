@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import { io } from "socket.io-client";
 
 // Module-level singleton so multiple components share one connection
@@ -18,29 +18,40 @@ function getSocket() {
 
 export default function useSocket(user) {
   const [connected, setConnected] = useState(false);
-  const socketRef = useRef(null);
+  const [socket, setSocket] = useState(() => getSocket());
 
   useEffect(() => {
-    const socket = getSocket();
-    if (!socket) return;
-    socketRef.current = socket;
+    const s = getSocket();
+    if (!s) return;
+    setSocket(s);
     refCount++;
 
-    const onConnect = () => setConnected(true);
+    const onConnect = () => {
+      setConnected(true);
+      // Re-register user on every connect/reconnect so server always has the mapping
+      if (user?.id) {
+        s.emit("register_user", { userId: user.id });
+      }
+    };
     const onDisconnect = () => setConnected(false);
 
-    socket.on("connect", onConnect);
-    socket.on("disconnect", onDisconnect);
+    s.on("connect", onConnect);
+    s.on("disconnect", onDisconnect);
 
     // Sync initial state
-    setConnected(socket.connected);
+    setConnected(s.connected);
+
+    // Register immediately if already connected
+    if (s.connected && user?.id) {
+      s.emit("register_user", { userId: user.id });
+    }
 
     // Only send location when a logged-in user is present
     let intervalId;
     if (navigator.geolocation && user?.id) {
       const sendLocation = () => {
         navigator.geolocation.getCurrentPosition((pos) => {
-          socket.emit("update_location", {
+          s.emit("update_location", {
             lat: pos.coords.latitude,
             lon: pos.coords.longitude,
             userId: user.id,
@@ -53,18 +64,19 @@ export default function useSocket(user) {
     }
 
     return () => {
-      socket.off("connect", onConnect);
-      socket.off("disconnect", onDisconnect);
+      s.off("connect", onConnect);
+      s.off("disconnect", onDisconnect);
       if (intervalId) clearInterval(intervalId);
       refCount--;
 
       if (refCount <= 0) {
-        socket.disconnect();
+        s.disconnect();
         sharedSocket = null;
         refCount = 0;
+        setSocket(null);
       }
     };
   }, [user?.id]);
 
-  return { socket: socketRef.current, connected };
+  return { socket, connected };
 }

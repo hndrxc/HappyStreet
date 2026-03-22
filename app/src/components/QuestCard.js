@@ -3,7 +3,7 @@
 import { CATEGORY_COLORS, DIFFICULTY_LABELS } from "@/lib/categories";
 import { formatDistance } from "@/lib/api";
 
-export default function QuestCard({ quest, onComplete }) {
+export default function QuestCard({ quest }) {
   const categoryColor = CATEGORY_COLORS[quest.category] || CATEGORY_COLORS["kindness"];
   const diffLabel = DIFFICULTY_LABELS[quest.difficulty_tier] || "Med";
 
@@ -42,27 +42,14 @@ export default function QuestCard({ quest, onComplete }) {
         {quest.title}
       </h3>
 
-      {/* Distance + Completions row */}
-      <div className="flex items-center gap-3 text-sm text-text-muted mb-3">
+      {/* Distance + Completions + Reward row */}
+      <div className="flex items-center gap-3 text-sm text-text-muted">
         <span>{formatDistance(quest.distance_meters)}</span>
         <span className="w-1 h-1 rounded-full bg-border-warm" />
         <span>{quest.completions || 0} completed</span>
+        <span className="w-1 h-1 rounded-full bg-border-warm" />
+        <span className="text-accent font-medium">+{quest.coin_reward || 0} JC</span>
       </div>
-
-      {/* Complete button */}
-      {onComplete && (
-        <button
-          onClick={() => onComplete(quest)}
-          className="w-full min-h-[var(--control-height)] rounded-xl text-sm font-semibold transition-all active:scale-[0.98]"
-          style={{
-            backgroundColor: categoryColor + "12",
-            color: categoryColor,
-            border: `1px solid ${categoryColor}30`,
-          }}
-        >
-          Complete +{quest.coin_reward || 0} JC
-        </button>
-      )}
     </div>
   );
 }

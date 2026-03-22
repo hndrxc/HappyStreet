@@ -491,6 +491,16 @@ async function requestHandler(req, res) {
     // GET /conversations  — get conversations for authenticated user
     // GET /conversations/:id/messages
     // POST /conversations/:id/messages
+    // POST /conversations/:id/read
+    if (url.pathname === "/unread-count") {
+      if (req.method !== "GET") { sendJson(res, 405, { error: "Method not allowed" }); return; }
+      const payload = verifyToken(req);
+      if (!payload) { sendJson(res, 401, { error: "Unauthorized" }); return; }
+      const count = await db.getUnreadCountsForUser(payload.userId);
+      sendJson(res, 200, { unreadCount: count });
+      return;
+    }
+
     if (url.pathname === "/conversations") {
       if (req.method !== "GET") { sendJson(res, 405, { error: "Method not allowed" }); return; }
       const payload = verifyToken(req);
@@ -503,6 +513,14 @@ async function requestHandler(req, res) {
     if (url.pathname.startsWith("/conversations/")) {
       const parts = url.pathname.split("/"); // ["", "conversations", id, "messages"]
       const convId = parts[2];
+
+      if (parts[3] === "read" && req.method === "POST") {
+        const payload = verifyToken(req);
+        if (!payload) { sendJson(res, 401, { error: "Unauthorized" }); return; }
+        await db.markMessagesRead(convId, payload.userId);
+        sendJson(res, 200, { success: true });
+        return;
+      }
 
       if (parts[3] === "messages") {
         if (req.method === "GET") {
@@ -525,6 +543,22 @@ async function requestHandler(req, res) {
           const text = typeof body.text === "string" ? body.text.trim() : "";
           if (!text) { sendJson(res, 400, { error: "text required" }); return; }
           const msg = await db.createMessage(convId, payload.userId, text);
+
+          // Also broadcast via socket for real-time
+          try {
+            const tunnel = await db.getTunnel(convId);
+            if (tunnel) {
+              const recipientId = String(tunnel.recipient_id);
+              const offererId = String(tunnel.offerer_id || "");
+              emitToUser(recipientId, "new_message", { conversationId: convId, message: msg });
+              emitToUser(offererId, "new_message", { conversationId: convId, message: msg });
+              const otherUserId = payload.userId === recipientId ? offererId : recipientId;
+              await sendUnreadCount(otherUserId);
+            }
+          } catch (broadcastErr) {
+            console.error("message broadcast failed:", broadcastErr);
+          }
+
           sendJson(res, 201, msg);
           return;
         }
@@ -553,6 +587,30 @@ async function requestHandler(req, res) {
 
 // Track which hotspot each socket is near: socketId -> { hotspotId, userId, username }
 const socketMeta = new Map();
+// Track userId -> Set<socketId> for targeted emissions
+const userSockets = new Map();
+
+function emitToUser(userId, event, data) {
+  const uid = String(userId);
+  const sockets = userSockets.get(uid);
+  if (!sockets || sockets.size === 0) {
+    console.log(`emitToUser: no sockets for user ${uid}, event=${event} dropped`);
+    return;
+  }
+  console.log(`emitToUser: sending ${event} to user ${uid} (${sockets.size} socket(s))`);
+  for (const sid of sockets) {
+    io.to(sid).emit(event, data);
+  }
+}
+
+async function sendUnreadCount(userId) {
+  try {
+    const count = await db.getUnreadCountsForUser(userId);
+    emitToUser(userId, "unread_update", { unreadCount: count });
+  } catch (err) {
+    console.error("sendUnreadCount failed:", err);
+  }
+}
 
 io.on("connection", async (socket) => {
   console.log("client connected:", socket.id);
@@ -562,6 +620,17 @@ io.on("connection", async (socket) => {
   } catch (err) {
     console.error("failed to emit init data:", err);
   }
+
+  // Auth: register socket for targeted events
+  socket.on("register_user", async ({ userId } = {}) => {
+    if (!userId) return;
+    const uid = String(userId);
+    if (!userSockets.has(uid)) userSockets.set(uid, new Set());
+    userSockets.get(uid).add(socket.id);
+    socketMeta.set(socket.id, { ...socketMeta.get(socket.id), userId: uid });
+    // Send initial unread count
+    await sendUnreadCount(uid);
+  });
 
   socket.on("update_location", async ({ lat, lon, userId, username } = {}) => {
     try {
@@ -579,6 +648,11 @@ io.on("connection", async (socket) => {
       });
 
       if (userId) {
+        // Ensure user-socket mapping is up to date
+        const uid = String(userId);
+        if (!userSockets.has(uid)) userSockets.set(uid, new Set());
+        userSockets.get(uid).add(socket.id);
+
         await db.updateUserLocation(userId, lat, lon);
 
         // Find the closest hotspot the user is physically inside
@@ -652,12 +726,46 @@ io.on("connection", async (socket) => {
         return;
       }
 
+      // Prevent accepting your own request
+      if (String(dequeued.recipientId) === String(userId)) {
+        socket.emit("quest_accept_error", { error: "You cannot accept your own request" });
+        return;
+      }
+
       // Create a tunnel connecting acceptor (offerer) and requester (recipient)
       const tunnel = await db.createTunnel(questId, dequeued.recipientId, hotspotId);
+      let tunnelId = null;
       if (tunnel) {
-        await db.updateTunnelStatus(tunnel._id.toString(), "MATCHED", {
+        tunnelId = tunnel._id.toString();
+        await db.updateTunnelStatus(tunnelId, "MATCHED", {
           offerer_id: String(userId),
         });
+
+        // Auto-send the requester's description as the first message
+        if (dequeued.description) {
+          const autoMsg = await db.createMessage(tunnelId, dequeued.recipientId, dequeued.description);
+          emitToUser(dequeued.recipientId, "new_message", { conversationId: tunnelId, message: autoMsg });
+          emitToUser(userId, "new_message", { conversationId: tunnelId, message: autoMsg });
+        }
+
+        // Look up quest title for notification
+        let questTitle = "Quest";
+        try {
+          const { ObjectId } = require("mongodb");
+          if (ObjectId.isValid(String(questId))) {
+            const questDoc = await db.getDb().collection("questTable").findOne({ _id: new ObjectId(String(questId)) });
+            if (questDoc) questTitle = questDoc.title;
+          }
+        } catch { /* non-fatal */ }
+
+        // Notify both users about the new conversation
+        const tunnelData = { tunnelId, questId, questTitle, recipientId: dequeued.recipientId, offererId: String(userId) };
+        emitToUser(dequeued.recipientId, "tunnel_created", tunnelData);
+        emitToUser(userId, "tunnel_created", tunnelData);
+
+        // Send unread counts
+        await sendUnreadCount(userId);
+        await sendUnreadCount(dequeued.recipientId);
       }
 
       // Broadcast updated hotspot so panel refreshes
@@ -674,6 +782,7 @@ io.on("connection", async (socket) => {
 
       socket.emit("quest_accepted", {
         questId,
+        tunnelId,
         recipientId: dequeued.recipientId,
         description: dequeued.description,
       });
@@ -737,11 +846,63 @@ io.on("connection", async (socket) => {
     try {
       const questId = typeof payload === "string" ? payload : payload?.questId;
       if (!questId) return;
+
+      const happinessRating = typeof payload === "object" ? payload?.happinessRating : null;
+      const conversationId = typeof payload === "object" ? payload?.conversationId : null;
       const requestedRecipientId =
         typeof payload === "object"
           ? (payload?.recipientId ?? payload?.userId ?? null)
           : null;
 
+      // Tunnel-based completion: called from ChatView "Done" button
+      if (conversationId) {
+        const tunnel = await db.getTunnel(conversationId);
+        if (!tunnel) {
+          socket.emit("quest_completion_rejected", { questId, reason: "tunnel_not_found" });
+          return;
+        }
+
+        // Mark tunnel as completed
+        await db.updateTunnelStatus(conversationId, "COMPLETED");
+
+        // Complete the quest (increment completions, award coins)
+        const updated = await db.completeQuest(questId, {
+          happinessRating: happinessRating || null,
+          userId: String(tunnel.recipient_id),
+          hotspotId: tunnel.hotspot_id ? String(tunnel.hotspot_id) : null,
+        });
+
+        if (updated) {
+          io.emit("quests_updated", await db.getQuests());
+          io.emit("quest_completed", {
+            quest: updated,
+            by: socket.id,
+            recipient_id: String(tunnel.recipient_id),
+            happinessRating: happinessRating || null,
+            coinsEarned: updated.coin_reward || 0,
+          });
+
+          // Recalculate stock price
+          if (updated.category) {
+            try {
+              const { recalculateStockPrice } = require("./market/pricing");
+              const stockUpdate = await recalculateStockPrice(db.getDb(), updated.category);
+              if (stockUpdate) io.emit("stock_updated", stockUpdate);
+            } catch (priceErr) {
+              console.error("stock recalculation failed:", priceErr);
+            }
+          }
+        }
+
+        // Notify both users the conversation is now locked
+        const offererId = String(tunnel.offerer_id || "");
+        const recipientId = String(tunnel.recipient_id);
+        emitToUser(recipientId, "conversation_locked", { conversationId });
+        emitToUser(offererId, "conversation_locked", { conversationId });
+        return;
+      }
+
+      // Legacy queue-based completion (fallback)
       const queueAssignment = await db.acquireQuestRecipientForCompletion(
         questId,
         requestedRecipientId
@@ -753,8 +914,6 @@ io.on("connection", async (socket) => {
         });
         return;
       }
-
-      const happinessRating = typeof payload === "object" ? payload?.happinessRating : null;
 
       const updated = await db.completeQuest(questId, {
         happinessRating: happinessRating || null,
@@ -809,7 +968,56 @@ io.on("connection", async (socket) => {
     }
   });
 
+  // --- Real-time chat ---
+  socket.on("chat_message", async ({ conversationId, text } = {}) => {
+    const meta = socketMeta.get(socket.id);
+    const userId = meta?.userId;
+    if (!conversationId || !text || !userId) return;
+
+    try {
+      // Verify user is part of this conversation
+      const tunnel = await db.getTunnel(conversationId);
+      if (!tunnel) return;
+      const recipientId = String(tunnel.recipient_id);
+      const offererId = String(tunnel.offerer_id || "");
+      if (userId !== recipientId && userId !== offererId) return;
+      if (tunnel.status === "COMPLETED" || tunnel.status === "FAILED") return;
+
+      const msg = await db.createMessage(conversationId, userId, text.trim());
+      const otherUserId = userId === recipientId ? offererId : recipientId;
+
+      // Send to both users
+      emitToUser(userId, "new_message", { conversationId, message: msg });
+      emitToUser(otherUserId, "new_message", { conversationId, message: msg });
+      // Update unread for recipient
+      await sendUnreadCount(otherUserId);
+    } catch (err) {
+      console.error("chat_message failed:", err);
+    }
+  });
+
+  socket.on("mark_read", async ({ conversationId } = {}) => {
+    const meta = socketMeta.get(socket.id);
+    const userId = meta?.userId;
+    if (!conversationId || !userId) return;
+
+    try {
+      await db.markMessagesRead(conversationId, userId);
+      await sendUnreadCount(userId);
+    } catch (err) {
+      console.error("mark_read failed:", err);
+    }
+  });
+
   socket.on("disconnect", () => {
+    const meta = socketMeta.get(socket.id);
+    if (meta?.userId) {
+      const sockets = userSockets.get(meta.userId);
+      if (sockets) {
+        sockets.delete(socket.id);
+        if (sockets.size === 0) userSockets.delete(meta.userId);
+      }
+    }
     socketMeta.delete(socket.id);
     console.log("client disconnected:", socket.id);
   });

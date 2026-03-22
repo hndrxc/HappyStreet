@@ -21,6 +21,9 @@ export function AuthProvider({ children }) {
     authMe(stored).then((userData) => {
       if (userData) setUser(userData);
       else { localStorage.removeItem("happystreet_token"); setToken(null); }
+    }).catch(() => {
+      localStorage.removeItem("happystreet_token");
+      setToken(null);
     }).finally(() => setIsLoading(false));
   }, []);
 

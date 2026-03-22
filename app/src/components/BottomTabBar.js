@@ -12,7 +12,7 @@ const tabs = [
   { href: "/profile", label: "Profile", Icon: ProfileIcon },
 ];
 
-export default function BottomTabBar() {
+export default function BottomTabBar({ unreadCount = 0 }) {
   const pathname = usePathname();
   const activePath = pathname === "/" ? "/hotspot" : pathname;
 
@@ -21,16 +21,24 @@ export default function BottomTabBar() {
       <div className="mx-auto flex h-16 w-full items-center justify-around border-t border-border bg-surface px-2">
         {tabs.map(({ href, label, Icon }) => {
           const isActive = activePath === href || activePath.startsWith(`${href}/`);
+          const showBadge = href === "/messages" && unreadCount > 0;
           return (
             <Link
               key={href}
               href={href}
               aria-current={isActive ? "page" : undefined}
-              className={`flex flex-col items-center justify-center flex-1 h-full py-2 transition-colors ${
+              className={`flex flex-col items-center justify-center flex-1 h-full py-2 transition-colors relative ${
                 isActive ? "text-accent" : "text-text-muted"
               }`}
             >
-              <Icon className="w-6 h-6 mb-1" active={isActive} />
+              <div className="relative">
+                <Icon className="w-6 h-6 mb-1" active={isActive} />
+                {showBadge && (
+                  <span className="absolute -top-1 -right-2 min-w-[18px] h-[18px] bg-error text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1">
+                    {unreadCount > 99 ? "99+" : unreadCount}
+                  </span>
+                )}
+              </div>
               <span className={`font-heading text-xs ${isActive ? "text-accent" : "text-text-muted"}`}>
                 {label}
               </span>

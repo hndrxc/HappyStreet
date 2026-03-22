@@ -72,33 +72,52 @@ export async function fetchAllQuests() {
 }
 
 export async function authRegister(username, password) {
-  const res = await fetch(`${BASE_URL}/auth/register`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username, password }),
-  });
-  const data = await res.json();
+  if (!BASE_URL) throw new Error("Server URL not configured");
+  let res;
+  try {
+    res = await fetch(`${BASE_URL}/auth/register`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password }),
+    });
+  } catch {
+    throw new Error("Unable to reach server. Check your connection.");
+  }
+  let data;
+  try { data = await res.json(); } catch { throw new Error("Invalid server response"); }
   if (!res.ok) throw new Error(data.error || "Register failed");
-  return data; // { token, user }
+  return data;
 }
 
 export async function authLogin(username, password) {
-  const res = await fetch(`${BASE_URL}/auth/login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username, password }),
-  });
-  const data = await res.json();
+  if (!BASE_URL) throw new Error("Server URL not configured");
+  let res;
+  try {
+    res = await fetch(`${BASE_URL}/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password }),
+    });
+  } catch {
+    throw new Error("Unable to reach server. Check your connection.");
+  }
+  let data;
+  try { data = await res.json(); } catch { throw new Error("Invalid server response"); }
   if (!res.ok) throw new Error(data.error || "Login failed");
-  return data; // { token, user }
+  return data;
 }
 
 export async function authMe(token) {
-  const res = await fetch(`${BASE_URL}/auth/me`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!res.ok) return null;
-  return res.json(); // { id, username, balance, joy_coins, total_completions }
+  if (!BASE_URL) return null;
+  try {
+    const res = await fetch(`${BASE_URL}/auth/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
 }
 
 export async function fetchMarket() {

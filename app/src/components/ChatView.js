@@ -1,57 +1,148 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { ArrowLeftIcon, SendIcon, LockIcon, CheckIcon } from "./icons";
+import { useEffect, useState, useRef, useCallback } from "react";
+import { useAuth } from "@/context/AuthContext";
+import useSocket from "@/lib/useSocket";
+import { sendMessage as apiSendMessage } from "@/lib/api";
+import HappinessRatingModal from "./HappinessRatingModal";
+import { ArrowLeftIcon, SendIcon, LockIcon } from "./icons";
 
-export default function ChatView({ 
-  conversation, 
-  messages, 
-  currentUserId, 
+export default function ChatView({
+  conversation,
+  messages: initialMessages,
+  currentUserId,
   isRecipient,
-  onBack 
+  onBack,
 }) {
+  const [messages, setMessages] = useState(initialMessages || []);
   const [newMessage, setNewMessage] = useState("");
-  const [showConfirm, setShowConfirm] = useState(false);
-  
-  const { otherUser, questTitle, isLocked } = conversation;
+  const [showDoneConfirm, setShowDoneConfirm] = useState(false);
+  const [ratingQuest, setRatingQuest] = useState(null);
+  const [sending, setSending] = useState(false);
+  const scrollRef = useRef(null);
+  const inputRef = useRef(null);
+  const { user, token } = useAuth();
+  const { socket } = useSocket(user);
 
-  const handleSend = (e) => {
-    e.preventDefault();
-    if (!newMessage.trim() || isLocked) return;
-    // Mock send - will be replaced with real API call
-    console.log("Sending message:", newMessage);
-    setNewMessage("");
+  const { otherUser, questTitle, isLocked, questId } = conversation;
+  const conversationId = conversation.id;
+
+  // Scroll to bottom on new messages
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [messages]);
+
+  // Sync initial messages
+  useEffect(() => {
+    setMessages(initialMessages || []);
+  }, [initialMessages]);
+
+  // Listen for real-time messages
+  useEffect(() => {
+    if (!socket || !conversationId) return;
+
+    const onNewMessage = (data) => {
+      if (data.conversationId !== conversationId) return;
+      setMessages((prev) => {
+        if (prev.some((m) => m.id === data.message.id)) return prev;
+        return [...prev, data.message];
+      });
+    };
+
+    socket.on("new_message", onNewMessage);
+    return () => socket.off("new_message", onNewMessage);
+  }, [socket, conversationId]);
+
+  // Mark as read on open and when new messages arrive
+  useEffect(() => {
+    if (!socket || !conversationId) return;
+    socket.emit("mark_read", { conversationId });
+  }, [socket, conversationId, messages.length]);
+
+  const handleSend = useCallback(
+    async (e) => {
+      e.preventDefault();
+      const text = newMessage.trim();
+      if (!text || isLocked || sending) return;
+
+      setSending(true);
+      setNewMessage("");
+
+      if (socket) {
+        socket.emit("chat_message", { conversationId, text });
+      } else if (token) {
+        try {
+          await apiSendMessage(conversationId, text, token);
+        } catch (err) {
+          console.error("Failed to send message:", err);
+        }
+      }
+      setSending(false);
+
+      if (inputRef.current) inputRef.current.focus();
+    },
+    [newMessage, isLocked, sending, socket, conversationId, token]
+  );
+
+  // "Done" flow: show confirmation, then show happiness rating
+  const handleDoneClick = () => {
+    setShowDoneConfirm(true);
   };
 
-  const handleDone = () => {
-    // Mock done action - will be replaced with real API call
-    console.log("Marking conversation as done");
-    setShowConfirm(false);
+  const handleDoneConfirm = () => {
+    setShowDoneConfirm(false);
+    // Show happiness rating modal
+    setRatingQuest({
+      id: questId,
+      _id: questId,
+      title: questTitle,
+      coin_reward: conversation.coinReward || 0,
+    });
+  };
+
+  const handleRatingSubmit = ({ questId: qId, happinessRating }) => {
+    if (!socket) return;
+    socket.emit("complete_quest", {
+      questId: qId,
+      happinessRating,
+      recipientId: currentUserId,
+      conversationId,
+    });
+    setRatingQuest(null);
     onBack();
   };
 
+  const handleRatingCancel = () => {
+    setRatingQuest(null);
+  };
+
   const formatTime = (date) => {
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const d = date instanceof Date ? date : new Date(date);
+    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   };
 
   return (
     <div className="page-shell bg-base">
+      {/* Header */}
       <header className="page-header bg-surface border-b border-border flex items-center gap-2">
-        <button 
+        <button
           onClick={onBack}
           className="w-9 h-9 flex items-center justify-center rounded-xl text-text-secondary hover:text-text-primary hover:bg-base transition-colors"
         >
           <ArrowLeftIcon className="w-5 h-5" />
         </button>
         <div className="flex-1 min-w-0">
-          <p className="font-semibold text-text-primary truncate">{otherUser.username}</p>
+          <p className="font-semibold text-text-primary truncate">
+            {otherUser.username}
+          </p>
           <p className="text-xs text-accent">{questTitle}</p>
         </div>
-        
-        {/* Done Button - Only visible to recipient (person who posted the need) */}
+
         {isRecipient && !isLocked && (
           <button
-            onClick={() => setShowConfirm(true)}
+            onClick={handleDoneClick}
             className="min-h-[2.5rem] px-4 bg-accent text-text-on-accent text-sm font-semibold rounded-lg shadow-warm-sm transition-transform active:scale-95"
           >
             Done
@@ -62,69 +153,92 @@ export default function ChatView({
       {isLocked && (
         <div className="px-4 py-3 bg-base-darker border-b border-border flex items-center justify-center gap-2 text-text-muted">
           <LockIcon className="w-4 h-4" />
-          <span className="text-sm">This conversation is locked (older than 3 days)</span>
+          <span className="text-sm">This conversation is complete</span>
         </div>
       )}
 
-      <div className="page-scroll scrollbar-hide">
+      {/* Messages */}
+      <div className="page-scroll scrollbar-hide" ref={scrollRef}>
         <div className="page-content space-y-3">
-        {messages.map((msg) => {
-          const isMine = msg.senderId === currentUserId;
-          return (
-            <div
-              key={msg.id}
-              className={`flex ${isMine ? "justify-end" : "justify-start"}`}
-            >
+          {messages.length === 0 && (
+            <p className="text-text-muted text-sm text-center py-8">
+              No messages yet. Say hello!
+            </p>
+          )}
+          {messages.map((msg) => {
+            const isMine = String(msg.senderId) === String(currentUserId);
+            return (
               <div
-                className={`max-w-[75%] px-4 py-2 rounded-2xl ${
-                  isMine
-                    ? "bg-chat-mine text-text-on-accent rounded-br-md"
-                    : "bg-chat-theirs text-text-primary rounded-bl-md"
-                }`}
+                key={msg.id}
+                className={`flex ${isMine ? "justify-end" : "justify-start"}`}
               >
-                <p className="text-sm">{msg.text}</p>
-                <p className={`text-xs mt-1 ${isMine ? "text-text-on-accent/70" : "text-text-muted"}`}>
-                  {formatTime(msg.timestamp)}
-                </p>
+                <div
+                  className={`max-w-[75%] px-4 py-2 rounded-2xl ${
+                    isMine
+                      ? "bg-accent text-text-on-accent rounded-br-md"
+                      : "bg-surface border border-border text-text-primary rounded-bl-md"
+                  }`}
+                >
+                  <p className="text-sm">{msg.text}</p>
+                  <p
+                    className={`text-xs mt-1 ${
+                      isMine ? "text-text-on-accent/70" : "text-text-muted"
+                    }`}
+                  >
+                    {formatTime(msg.timestamp)}
+                  </p>
+                </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
         </div>
       </div>
 
-      <form 
-        onSubmit={handleSend}
-        className="page-header bg-surface border-t border-border flex items-center gap-3"
-      >
-        <input
-          type="text"
-          value={newMessage}
-          onChange={(e) => setNewMessage(e.target.value)}
-          placeholder={isLocked ? "Chat is locked" : "Type a message..."}
-          disabled={isLocked}
-          className="flex-1 min-h-[var(--control-height)] px-4 bg-base rounded-xl border border-border text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-        />
-        <button
-          type="submit"
-          disabled={!newMessage.trim() || isLocked}
-          className="w-11 h-11 bg-accent text-text-on-accent rounded-xl transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+      {/* Chat input */}
+      {!isLocked && (
+        <form
+          onSubmit={handleSend}
+          className="page-header bg-surface border-t border-border flex items-center gap-3"
         >
-          <SendIcon className="w-5 h-5" />
-        </button>
-      </form>
+          <input
+            ref={inputRef}
+            type="text"
+            value={newMessage}
+            onChange={(e) => setNewMessage(e.target.value)}
+            placeholder="Type a message..."
+            autoFocus
+            className="flex-1 min-h-[2.75rem] px-4 bg-base rounded-xl border border-border text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent transition-colors"
+          />
+          <button
+            type="submit"
+            disabled={!newMessage.trim() || sending}
+            className="w-11 h-11 bg-accent text-text-on-accent rounded-xl transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center shrink-0"
+          >
+            <SendIcon className="w-5 h-5" />
+          </button>
+        </form>
+      )}
 
-      {showConfirm && (
-        <ConfirmDoneModal 
-          onConfirm={handleDone}
-          onCancel={() => setShowConfirm(false)}
+      {/* Done confirmation */}
+      {showDoneConfirm && (
+        <DoneConfirmModal
+          onConfirm={handleDoneConfirm}
+          onCancel={() => setShowDoneConfirm(false)}
         />
       )}
+
+      {/* Happiness rating after Done */}
+      <HappinessRatingModal
+        quest={ratingQuest}
+        isOpen={!!ratingQuest}
+        onSubmit={handleRatingSubmit}
+        onCancel={handleRatingCancel}
+      />
     </div>
   );
 }
 
-function ConfirmDoneModal({ onConfirm, onCancel }) {
+function DoneConfirmModal({ onConfirm, onCancel }) {
   const [canConfirm, setCanConfirm] = useState(false);
 
   useEffect(() => {
@@ -134,20 +248,17 @@ function ConfirmDoneModal({ onConfirm, onCancel }) {
 
   return (
     <>
-      <div 
+      <div
         className="fixed inset-0 bg-text-primary/30 z-50"
         onClick={onCancel}
       />
       <div className="modal-center z-50">
         <div className="bg-surface rounded-2xl p-6 shadow-warm max-w-sm w-full animate-fade-in">
-          <div className="w-14 h-14 rounded-full bg-accent/10 flex items-center justify-center mx-auto mb-4">
-            <CheckIcon className="w-7 h-7 text-accent" />
-          </div>
           <h3 className="font-heading text-base text-text-primary text-center mb-2">
             Mark as Done?
           </h3>
           <p className="text-text-secondary text-sm text-center mb-6">
-            This will complete the quest and reward the fulfiller.
+            This will complete the quest and you&apos;ll rate your experience.
           </p>
           <div className="flex gap-3">
             <button

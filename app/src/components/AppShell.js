@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import useSocket from "@/lib/useSocket";
 import BottomTabBar from "./BottomTabBar";
@@ -9,6 +9,10 @@ import LoginPage from "./pages/LoginPage";
 export default function AppShell({ children }) {
   const { user, isLoading, updateUser } = useAuth();
   const { socket } = useSocket(user);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [matchToast, setMatchToast] = useState(null);
+
+  // register_user is handled by useSocket on connect/reconnect
 
   // Keep user.hotspot_id in sync with server
   useEffect(() => {
@@ -19,6 +23,31 @@ export default function AppShell({ children }) {
     socket.on("user_hotspot_changed", onHotspotChanged);
     return () => socket.off("user_hotspot_changed", onHotspotChanged);
   }, [socket, updateUser]);
+
+  // Track unread message count
+  useEffect(() => {
+    if (!socket) return;
+    const onUnread = ({ unreadCount: count }) => {
+      setUnreadCount(count || 0);
+    };
+    socket.on("unread_update", onUnread);
+    return () => socket.off("unread_update", onUnread);
+  }, [socket]);
+
+  // Notify both parties when a tunnel is established (dedup by tunnelId)
+  useEffect(() => {
+    if (!socket) return;
+    const seenTunnels = new Set();
+    const onTunnelCreated = (data) => {
+      const tid = data?.tunnelId;
+      if (tid && seenTunnels.has(tid)) return; // skip duplicate
+      if (tid) seenTunnels.add(tid);
+      setMatchToast(data?.questTitle || "Quest");
+      setTimeout(() => setMatchToast(null), 5000);
+    };
+    socket.on("tunnel_created", onTunnelCreated);
+    return () => socket.off("tunnel_created", onTunnelCreated);
+  }, [socket]);
 
   // Loading state
   if (isLoading) {
@@ -45,7 +74,24 @@ export default function AppShell({ children }) {
           </div>
         </div>
       </main>
-      <BottomTabBar />
+      <BottomTabBar unreadCount={unreadCount} />
+
+      {matchToast && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] animate-fade-in">
+          <div
+            className="bg-success text-white px-5 py-3 rounded-2xl shadow-lg flex items-center gap-3 cursor-pointer"
+            onClick={() => setMatchToast(null)}
+          >
+            <svg className="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+            <div>
+              <p className="text-sm font-semibold">Quest matched!</p>
+              <p className="text-xs opacity-90">{matchToast} — check your messages</p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

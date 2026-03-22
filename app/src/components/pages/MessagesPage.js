@@ -1,27 +1,62 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/context/AuthContext";
+import useSocket from "@/lib/useSocket";
 import { fetchConversations, fetchMessages } from "@/lib/api";
 import { LockIcon } from "@/components/icons";
 import ChatView from "@/components/ChatView";
 
 export default function MessagesPage() {
   const { user, token } = useAuth();
+  const { socket } = useSocket(user);
   const [activeSection, setActiveSection] = useState("needs");
   const [conversations, setConversations] = useState({ needs: [], fulfillments: [] });
   const [selectedConversation, setSelectedConversation] = useState(null);
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+  const loadConversations = useCallback(() => {
     if (!token) return;
-    setLoading(true);
     fetchConversations(token)
       .then(setConversations)
       .catch((err) => console.error("Failed to load conversations:", err))
       .finally(() => setLoading(false));
   }, [token]);
+
+  useEffect(() => {
+    setLoading(true);
+    loadConversations();
+  }, [loadConversations]);
+
+  // Reload conversation list when a new tunnel is created
+  useEffect(() => {
+    if (!socket) return;
+    const onTunnelCreated = () => loadConversations();
+    socket.on("tunnel_created", onTunnelCreated);
+    return () => socket.off("tunnel_created", onTunnelCreated);
+  }, [socket, loadConversations]);
+
+  // Update last message in conversation list when a new message arrives
+  useEffect(() => {
+    if (!socket) return;
+    const onNewMessage = ({ conversationId, message }) => {
+      setConversations((prev) => {
+        const updateList = (list) =>
+          list.map((conv) =>
+            conv.id === conversationId
+              ? { ...conv, lastMessage: message.text, timestamp: message.timestamp }
+              : conv
+          );
+        return {
+          needs: updateList(prev.needs),
+          fulfillments: updateList(prev.fulfillments),
+        };
+      });
+    };
+    socket.on("new_message", onNewMessage);
+    return () => socket.off("new_message", onNewMessage);
+  }, [socket]);
 
   useEffect(() => {
     if (!selectedConversation || !token) return;
@@ -41,7 +76,11 @@ export default function MessagesPage() {
         messages={messages}
         currentUserId={user?.id}
         isRecipient={isRecipient}
-        onBack={() => { setSelectedConversation(null); setMessages([]); }}
+        onBack={() => {
+          setSelectedConversation(null);
+          setMessages([]);
+          loadConversations();
+        }}
       />
     );
   }
@@ -61,7 +100,7 @@ export default function MessagesPage() {
                   : "text-text-muted"
               }`}
             >
-              Needs
+              Requests
             </button>
             <button
               onClick={() => setActiveSection("fulfillments")}
@@ -71,7 +110,7 @@ export default function MessagesPage() {
                   : "text-text-muted"
               }`}
             >
-              Fulfillments
+              Offers
             </button>
           </div>
         </div>
@@ -85,7 +124,11 @@ export default function MessagesPage() {
             </div>
           ) : currentConversations.length === 0 ? (
             <div className="page-center">
-              <p className="text-text-muted text-sm">No conversations yet</p>
+              <p className="text-text-muted text-sm">
+                {activeSection === "needs"
+                  ? "No requests yet. Request a quest at a hotspot!"
+                  : "No offers yet. Accept a quest to help someone!"}
+              </p>
             </div>
           ) : (
             <div className="card-stack-center divide-y divide-border rounded-2xl border border-border bg-surface overflow-hidden">
@@ -139,8 +182,14 @@ function ConversationItem({ conversation, onClick }) {
         </div>
         <p className="text-sm text-accent font-medium mb-1">{questTitle}</p>
         <div className="flex items-center gap-2">
-          {isLocked && <LockIcon className="w-3 h-3 text-text-muted shrink-0" />}
-          <p className={`text-sm truncate ${isLocked ? "text-text-muted" : "text-text-secondary"}`}>
+          {isLocked && (
+            <LockIcon className="w-3 h-3 text-text-muted shrink-0" />
+          )}
+          <p
+            className={`text-sm truncate ${
+              isLocked ? "text-text-muted" : "text-text-secondary"
+            }`}
+          >
             {lastMessage || "No messages yet"}
           </p>
         </div>

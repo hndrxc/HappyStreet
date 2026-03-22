@@ -1,21 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { fetchNearbyQuests } from "@/lib/api";
 import useSocket from "@/lib/useSocket";
 import QuestCard from "./QuestCard";
-import HappinessRatingModal from "./HappinessRatingModal";
-import JoyCoinToast from "./JoyCoinToast";
 import { ArrowLeftIcon, CompassIcon } from "./icons";
 import { useAuth } from "@/context/AuthContext";
 
 export default function HotspotQuestList({ hotspot, onBack }) {
   const [questsList, setQuestsList] = useState(null);
-  const [completingQuest, setCompletingQuest] = useState(null);
-  const [removingId, setRemovingId] = useState(null);
-  const [pendingCompletion, setPendingCompletion] = useState(null);
-  const [completionError, setCompletionError] = useState("");
-  const [toast, setToast] = useState({ visible: false, coinAmount: 0, category: null });
   const [requestModal, setRequestModal] = useState(null);
   const [waitingForMatch, setWaitingForMatch] = useState(false);
   const [questqIds, setQuestqIds] = useState(hotspot?.questq_ids || []);
@@ -66,30 +59,6 @@ export default function HotspotQuestList({ hotspot, onBack }) {
     const onQuestCompleted = (data) => {
       const qId = data.quest?.id || data.quest?._id;
       if (!qId) return;
-
-      const isPendingQuest = pendingCompletion && String(pendingCompletion.questId) === String(qId);
-      const isPendingRecipient =
-        userId && data.recipient_id && String(data.recipient_id) === String(userId);
-
-      if (isPendingQuest && isPendingRecipient) {
-        setRemovingId(qId);
-        setToast({
-          visible: true,
-          coinAmount: pendingCompletion.coinAmount || 0,
-          category: pendingCompletion.category || null,
-        });
-        setPendingCompletion(null);
-        setTimeout(() => {
-          setQuestsList((prev) =>
-            Array.isArray(prev)
-              ? prev.filter((q) => String(q.id || q._id || q.quest_id) !== String(qId))
-              : prev
-          );
-          setRemovingId(null);
-        }, 400);
-        return;
-      }
-
       setQuestsList((prev) =>
         Array.isArray(prev)
           ? prev.map((q) =>
@@ -101,70 +70,23 @@ export default function HotspotQuestList({ hotspot, onBack }) {
       );
     };
 
-    const onQuestCompletionRejected = (data) => {
-      if (!pendingCompletion) return;
-      if (String(data?.questId) !== String(pendingCompletion.questId)) return;
-      setPendingCompletion(null);
-      setCompletionError("Could not complete this quest right now. Please try again.");
-    };
-
     const onRequestSent = () => {
       setWaitingForMatch(true);
       setTimeout(() => setWaitingForMatch(false), 3000);
     };
 
     socket.on("quest_completed", onQuestCompleted);
-    socket.on("quest_completion_rejected", onQuestCompletionRejected);
     socket.on("task_request_sent", onRequestSent);
 
     return () => {
       socket.off("quest_completed", onQuestCompleted);
-      socket.off("quest_completion_rejected", onQuestCompletionRejected);
       socket.off("task_request_sent", onRequestSent);
     };
-  }, [socket, pendingCompletion, userId]);
+  }, [socket]);
 
-  const handleComplete = (quest) => {
-    if (!socket || !userId || !hotspotId) return;
-
-    const questId = quest.id || quest._id || quest.quest_id;
-    if (!questId) return;
-
-    setCompletionError("");
-    socket.emit("join_quest", { questId, userId, hotspotId });
-    setCompletingQuest(quest);
-  };
-
-  const handleRatingSubmit = useCallback(({ questId, happinessRating }) => {
-    if (!completingQuest || !socket || !userId || !hotspotId) return;
-
-    setCompletionError("");
-    setPendingCompletion({
-      questId,
-      coinAmount: completingQuest.coin_reward || 0,
-      category: completingQuest.category,
-    });
-
-    socket.emit("complete_quest", {
-      questId,
-      happinessRating,
-      userId,
-      hotspotId,
-    });
-    setCompletingQuest(null);
-  }, [completingQuest, socket, userId, hotspotId]);
-
-  const handleRatingCancel = () => {
-    setCompletingQuest(null);
-  };
-
-  const handleToastDone = useCallback(() => {
-    setToast({ visible: false, coinAmount: 0, category: null });
-  }, []);
-
-  const handleTaskAction = (quest, action) => {
+  const handleTaskAction = (quest) => {
     if (!isAtHotspot) return;
-    setRequestModal({ quest, action });
+    setRequestModal({ quest });
   };
 
   const handleTaskActionConfirm = (description) => {
@@ -185,7 +107,7 @@ export default function HotspotQuestList({ hotspot, onBack }) {
       task,
       hotspotId,
       hotspotName: hotspot?.name,
-      action: requestModal.action,
+      action: "request",
       userId,
       description: description || "",
     });
@@ -238,17 +160,13 @@ export default function HotspotQuestList({ hotspot, onBack }) {
       {waitingForMatch && (
         <div className="px-4 py-3 bg-accent/10 border-b border-accent/20 text-center">
           <p className="text-sm text-accent font-medium animate-pulse">
-            Request submitted
+            Request submitted — waiting for someone to accept
           </p>
         </div>
       )}
 
       <div className="page-scroll scrollbar-hide">
         <div className="page-content space-y-3">
-          {completionError && (
-            <p className="text-sm text-error text-center">{completionError}</p>
-          )}
-
           {/* Requested Quests Panel */}
           {activeRequests.length > 0 && (
             <div className="card-stack-center">
@@ -306,7 +224,6 @@ export default function HotspotQuestList({ hotspot, onBack }) {
                   </div>
                   <div className="h-4 w-3/4 bg-base-darker rounded mb-2" />
                   <div className="h-3 w-1/2 bg-base-darker rounded mb-3" />
-                  <div className="h-10 w-full bg-base-darker rounded-xl" />
                 </div>
               ))}
             </>
@@ -326,31 +243,16 @@ export default function HotspotQuestList({ hotspot, onBack }) {
             <div className="card-stack-center space-y-3">
               {displayQuests.map((quest) => {
                 const qId = quest.id || quest._id || quest.quest_id;
-                const isRemoving = String(removingId) === String(qId);
                 return (
-                  <div
-                    key={qId}
-                    className={`transition-all duration-400 ${
-                      isRemoving ? "animate-slide-right opacity-0" : ""
-                    }`}
-                  >
-                    <QuestCard quest={quest} onComplete={handleComplete} />
-                    <div className="grid grid-cols-2 gap-2 mt-2">
-                      <button
-                        onClick={() => handleTaskAction(quest, "request")}
-                        disabled={!isAtHotspot}
-                        className="min-h-[2.25rem] rounded-xl text-sm font-semibold border border-accent/40 text-accent hover:bg-accent/5 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-                      >
-                        Request Help
-                      </button>
-                      <button
-                        onClick={() => handleTaskAction(quest, "offer")}
-                        disabled={!isAtHotspot}
-                        className="min-h-[2.25rem] rounded-xl text-sm font-semibold border border-border text-text-secondary hover:bg-base transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-                      >
-                        Offer Help
-                      </button>
-                    </div>
+                  <div key={qId}>
+                    <QuestCard quest={quest} />
+                    <button
+                      onClick={() => handleTaskAction(quest)}
+                      disabled={!isAtHotspot}
+                      className="w-full min-h-[2.25rem] rounded-xl text-sm font-semibold border border-accent/40 text-accent hover:bg-accent/5 transition-colors disabled:opacity-30 disabled:cursor-not-allowed mt-2"
+                    >
+                      Request Help
+                    </button>
                   </div>
                 );
               })}
@@ -359,24 +261,9 @@ export default function HotspotQuestList({ hotspot, onBack }) {
         </div>
       </div>
 
-      <HappinessRatingModal
-        quest={completingQuest}
-        isOpen={!!completingQuest}
-        onSubmit={handleRatingSubmit}
-        onCancel={handleRatingCancel}
-      />
-
-      <JoyCoinToast
-        coinAmount={toast.coinAmount}
-        category={toast.category}
-        visible={toast.visible}
-        onDone={handleToastDone}
-      />
-
       {requestModal && (
         <TaskActionConfirmModal
           quest={requestModal.quest}
-          action={requestModal.action}
           onConfirm={handleTaskActionConfirm}
           onCancel={handleTaskActionCancel}
         />
@@ -385,8 +272,7 @@ export default function HotspotQuestList({ hotspot, onBack }) {
   );
 }
 
-function TaskActionConfirmModal({ quest, action, onConfirm, onCancel }) {
-  const isRequest = action === "request";
+function TaskActionConfirmModal({ quest, onConfirm, onCancel }) {
   const [description, setDescription] = useState("");
 
   return (
@@ -398,7 +284,7 @@ function TaskActionConfirmModal({ quest, action, onConfirm, onCancel }) {
       <div className="modal-center z-50">
         <div className="bg-surface rounded-2xl p-6 shadow-warm max-w-sm w-full animate-fade-in">
           <h3 className="font-heading text-base text-text-primary text-center mb-2">
-            {isRequest ? "Request this quest?" : "Offer help for this quest?"}
+            Request this quest?
           </h3>
           <p className="text-text-secondary text-sm text-center mb-4">
             {quest.title}
@@ -421,7 +307,7 @@ function TaskActionConfirmModal({ quest, action, onConfirm, onCancel }) {
               onClick={() => onConfirm(description)}
               className="flex-1 py-3 bg-accent text-text-on-accent rounded-xl font-semibold transition-all active:scale-95"
             >
-              {isRequest ? "Request" : "Offer"}
+              Request
             </button>
           </div>
         </div>

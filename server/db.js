@@ -1176,9 +1176,13 @@ async function getConversationsByUser(userId) {
     }
 
     let questTitle = tunnel.quest_id ? String(tunnel.quest_id) : "Quest";
+    let coinReward = 0;
     if (tunnel.quest_id && ObjectId.isValid(String(tunnel.quest_id))) {
       const questDoc = await db.collection("questTable").findOne({ _id: new ObjectId(String(tunnel.quest_id)) });
-      if (questDoc) questTitle = questDoc.title;
+      if (questDoc) {
+        questTitle = questDoc.title;
+        coinReward = questDoc.coin_reward || 0;
+      }
     }
 
     const lastMsg = await db.collection("messagesTable")
@@ -1191,6 +1195,7 @@ async function getConversationsByUser(userId) {
       id: tunnel._id.toString(),
       questId: tunnel.quest_id ? String(tunnel.quest_id) : null,
       questTitle,
+      coinReward,
       otherUser,
       lastMessage: lastMsg.length > 0 ? lastMsg[0].text : "",
       timestamp: lastMsg.length > 0 ? lastMsg[0].timestamp : (tunnel.created_at || new Date()),
@@ -1225,9 +1230,35 @@ async function createMessage(conversationId, senderId, text) {
     senderId: String(senderId),
     text: String(text),
     timestamp: new Date(),
+    readBy: [String(senderId)],
   };
   const result = await db.collection("messagesTable").insertOne(doc);
   return { ...doc, id: result.insertedId.toString() };
+}
+
+async function markMessagesRead(conversationId, userId) {
+  const userIdStr = String(userId);
+  await db.collection("messagesTable").updateMany(
+    { conversationId: String(conversationId), readBy: { $ne: userIdStr } },
+    { $addToSet: { readBy: userIdStr } }
+  );
+}
+
+async function getUnreadCountsForUser(userId) {
+  const userIdStr = String(userId);
+  const tunnels = await db.collection("tunnelTable").find({
+    $or: [{ recipient_id: userIdStr }, { offerer_id: userIdStr }],
+  }).toArray();
+
+  let total = 0;
+  for (const tunnel of tunnels) {
+    const count = await db.collection("messagesTable").countDocuments({
+      conversationId: tunnel._id.toString(),
+      readBy: { $ne: userIdStr },
+    });
+    total += count;
+  }
+  return total;
 }
 
 // --- Shares ---
@@ -1332,6 +1363,6 @@ module.exports = {
   acquireQuestRecipientForCompletion, requeueQuestRecipient, dequeueQuestRecipient,
   getTunnel, createTunnel, updateTunnelStatus, deleteTunnel,
   getAllStocks, getStockByTicker, getCategories, getLeaderboard, getUserStats,
-  getConversationsByUser, getMessagesByConversation, createMessage,
+  getConversationsByUser, getMessagesByConversation, createMessage, markMessagesRead, getUnreadCountsForUser,
   getUserShares, createUserShare, sellUserShare, sellAllUserShares,
 };
