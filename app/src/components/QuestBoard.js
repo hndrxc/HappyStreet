@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from "react";
 import { io } from "socket.io-client";
 
 export default function QuestBoard() {
+  const serverUrl = process.env.NEXT_PUBLIC_SERVER_URL;
   const [quests, setQuests] = useState([]);
   const [flash, setFlash] = useState({});
   const [newTitle, setNewTitle] = useState("");
@@ -11,7 +12,9 @@ export default function QuestBoard() {
   const socketRef = useRef(null);
 
   useEffect(() => {
-    const socket = io(process.env.NEXT_PUBLIC_SERVER_URL);
+    if (!serverUrl) return;
+
+    const socket = io(serverUrl);
     socketRef.current = socket;
 
     socket.on("connect", () => setConnected(true));
@@ -41,7 +44,7 @@ export default function QuestBoard() {
       socket.removeAllListeners();
       socket.disconnect();
     };
-  }, []);
+  }, [serverUrl]);
 
   function completeQuest(id) {
     socketRef.current?.emit("complete_quest", id);
@@ -49,13 +52,24 @@ export default function QuestBoard() {
 
   function addQuest(e) {
     e.preventDefault();
-    if (!newTitle.trim()) return;
-    fetch(`${process.env.NEXT_PUBLIC_SERVER_URL}/quests`, {
+    if (!serverUrl || !newTitle.trim()) return;
+    fetch(`${serverUrl}/quests`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ title: newTitle.trim() }),
     });
     setNewTitle("");
+  }
+
+  if (!serverUrl) {
+    return (
+      <div className="min-h-screen p-6 max-w-3xl mx-auto">
+        <div className="border border-terminal-danger text-terminal-danger px-4 py-3">
+          Missing <code>NEXT_PUBLIC_SERVER_URL</code>. Set it in{" "}
+          <code>app/.env.local</code>.
+        </div>
+      </div>
+    );
   }
 
   const sorted = [...quests].sort((a, b) => b.value - a.value);
