@@ -303,6 +303,10 @@ async function requestHandler(req, res) {
 
 
 // --- Socket.io ---
+
+// Track which hotspot each socket is near: socketId -> { hotspotId, userId, username }
+const socketMeta = new Map();
+
 io.on("connection", async (socket) => {
   console.log("client connected:", socket.id);
   try {
@@ -311,11 +315,60 @@ io.on("connection", async (socket) => {
     console.error("failed to emit quests_init:", err);
   }
 
-  
-
-socket.on("update_location", async ({ lat, lon }) => {
+socket.on("update_location", async ({ lat, lon, userId, username }) => {
   const hotspots = await db.getNearbyHotspots(lat, lon);
   socket.emit("hotspots_init", hotspots);
+
+  // Track this socket's location context
+  if (userId) {
+    socketMeta.set(socket.id, { userId, username, lat, lon });
+  }
+});
+
+// --- Task Request/Offer flow ---
+socket.on("task_request", ({ task, hotspotId, hotspotName, action, userId, username }) => {
+  // Broadcast to all OTHER connected sockets that have location data
+  const requestId = `${socket.id}_${Date.now()}`;
+  for (const [sid, meta] of socketMeta.entries()) {
+    if (sid === socket.id) continue; // don't send to self
+    if (meta.userId === userId) continue; // don't send to self (multi-tab)
+
+    io.to(sid).emit("incoming_task_request", {
+      requestId,
+      task,
+      hotspotId,
+      hotspotName,
+      action, // "request" or "offer"
+      fromUserId: userId,
+      fromUsername: username,
+      fromSocketId: socket.id,
+    });
+  }
+
+  // Acknowledge to sender that request was broadcast
+  socket.emit("task_request_sent", { requestId, task });
+});
+
+socket.on("task_accept", ({ requestId, fromSocketId, task, userId, username }) => {
+  // Notify the original requester that someone accepted
+  io.to(fromSocketId).emit("task_accepted", {
+    requestId,
+    task,
+    byUserId: userId,
+    byUsername: username,
+    acceptedSocketId: socket.id,
+  });
+
+  // Confirm to the accepter
+  socket.emit("task_accept_confirmed", {
+    requestId,
+    task,
+  });
+});
+
+socket.on("task_decline", ({ requestId, fromSocketId }) => {
+  // Optionally notify requester — for now just log
+  console.log(`${socket.id} declined request ${requestId}`);
 });
 
 
@@ -398,6 +451,7 @@ socket.on("complete_quest", async ({ questId, userId }) => {
 
 
   socket.on("disconnect", () => {
+    socketMeta.delete(socket.id);
     console.log("client disconnected:", socket.id);
   });
 });

@@ -88,6 +88,17 @@ export const hotspots = [
     heat_score: 22,
     active: true,
   },
+  {
+    id: "hotspot_008",
+    name: "My Spot",
+    description: "Home base",
+    location: { type: "Point", coordinates: [-91.17098623802013, 30.389581536572592] },
+    radius_meters: 200,
+    questq_ids: [],
+    category_bias: "kindness",
+    heat_score: 5,
+    active: true,
+  },
 ];
 
 // --- Backend-shaped quest data (Phase 1+2) ---

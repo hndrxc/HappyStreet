@@ -1,199 +1,88 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
-import useSocket from "@/lib/useSocket";
-import QuestCard from "./QuestCard";
+import { useState, useEffect } from "react";
 import { ArrowLeftIcon, CompassIcon } from "./icons";
+import { CATEGORY_COLORS } from "@/lib/mockData";
 import { useAuth } from "@/context/AuthContext";
-
-export default function HotspotQuestList({ hotspot, onBack }) {
-  const [questsList, setQuestsList] = useState(hotspot.questq_ids || []);
-  const { socket } = useSocket();
-
-  // Keep queue in sync with hotspot prop changes
-  useEffect(() => {
-    setQuestsList(hotspot.questq_ids || []);
-  }, [hotspot]);
-
-  // Listen for real-time queue updates
-  useEffect(() => {
-    if (!socket) return;
-
-    const onHotspotUpdated = (data) => {
-      const id = hotspot.id || hotspot._id;
-      if (data.hotspot_id !== id) return;
-      setQuestsList(data.questq_ids || []);
-    };
-
-    socket.on("hotspot_updated", onHotspotUpdated);
-    return () => socket.off("hotspot_updated", onHotspotUpdated);
-  }, [socket, hotspot]);
-
-  const { user } = useAuth();
-
-const handleClaim = useCallback((quest) => {
-  if (!socket || !user) return;
-  socket.emit("join_quest", {
-    questId: quest.quest_id,
-    userId: user.id,
-    hotspotId: hotspot.id || hotspot._id,
-  });
-}, [socket, hotspot, user]);
-
-  return (
-    <div className="flex-1 flex flex-col overflow-hidden">
-      <header className="px-4 py-4 bg-surface border-b border-border flex items-center gap-3">
-        <button
-          onClick={onBack}
-          className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-base-darker transition-colors"
-        >
-          <ArrowLeftIcon className="w-5 h-5 text-text-secondary" />
-        </button>
-        <div className="w-3 h-3 rounded-full bg-success animate-pulse" />
-        <h1 className="font-pixel text-[11px] text-text-primary truncate">
-          {hotspot.name}
-        </h1>
-      </header>
-
-      <div className="flex-1 overflow-y-auto scrollbar-hide p-4 space-y-3">
-        {questsList.length === 0 ? (
-          <div className="flex-1 flex flex-col items-center justify-center py-16 text-center">
-            <div className="w-16 h-16 rounded-full bg-base-darker flex items-center justify-center mb-4">
-              <CompassIcon className="w-8 h-8 text-text-muted" />
-            </div>
-            <p className="font-pixel text-[10px] text-text-primary mb-1">
-              No quests here yet
-            </p>
-            <p className="text-xs text-text-muted">
-              Check back soon or try another hotspot
-            </p>
-          </div>
-        ) : (
-          questsList.map((quest) => {
-            const qId = quest.quest_id;
-            return (
-              <div key={qId}>
-                <QuestCard quest={quest} onComplete={handleClaim} />
-              </div>
-            );
-          })
-        )}
-      </div>
-    </div>
-  );
-}
-
-
-
-/*
-original, wrong code
-
-
-"use client";
-
-import { useEffect, useState, useCallback } from "react";
-import { fetchNearbyQuests } from "@/lib/api";
-import { quests as mockQuests } from "@/lib/mockData";
 import useSocket from "@/lib/useSocket";
-import QuestCard from "./QuestCard";
-import HappinessRatingModal from "./HappinessRatingModal";
-import JoyCoinToast from "./JoyCoinToast";
-import { ArrowLeftIcon, CompassIcon } from "./icons";
+
+// Hardcoded boilerplate tasks — swap these out later
+const TASKS = [
+  { id: "task_1", title: "Buy someone a coffee", category: "kindness", coin_reward: 15 },
+  { id: "task_2", title: "Help carry groceries", category: "kindness", coin_reward: 20 },
+  { id: "task_3", title: "Walk someone's dog", category: "physical activity", coin_reward: 25 },
+  { id: "task_4", title: "Give a campus tour", category: "social connection", coin_reward: 20 },
+  { id: "task_5", title: "Share class notes", category: "gratitude", coin_reward: 10 },
+];
 
 export default function HotspotQuestList({ hotspot, onBack }) {
-  const [questsList, setQuestsList] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [completingQuest, setCompletingQuest] = useState(null);
+  const { user } = useAuth();
+  const { socket } = useSocket(user);
+  const [selectedTask, setSelectedTask] = useState(null);
+  const [visibleTasks, setVisibleTasks] = useState(TASKS);
   const [removingId, setRemovingId] = useState(null);
-  const [toast, setToast] = useState({ visible: false, coinAmount: 0, category: null });
-  const { socket } = useSocket();
+  const [confirmModal, setConfirmModal] = useState(null); // { task, action }
+  const [waitingForMatch, setWaitingForMatch] = useState(false);
 
-  // Fetch quests for this hotspot
-  useEffect(() => {
-    const hotspotId = hotspot.id || hotspot._id;
-
-    setLoading(true);
-    fetchNearbyQuests({ hotspotId, lat: null, lon: null })
-      .then((data) => {
-        if (data && data.length > 0) {
-          setQuestsList(data);
-        } else {
-          // Fallback to mock quests filtered by hotspot
-          setQuestsList(
-            mockQuests.filter((q) => q.hotspot_id === hotspotId)
-          );
-        }
-      })
-      .catch(() => {
-        setQuestsList(
-          mockQuests.filter((q) => q.hotspot_id === (hotspot.id || hotspot._id))
-        );
-      })
-      .finally(() => setLoading(false));
-  }, [hotspot]);
-
-  // Listen for quest completions from other users
+  // Listen for acknowledgement that request was sent
   useEffect(() => {
     if (!socket) return;
 
-    const onQuestCompleted = (data) => {
-      const qId = data.quest?.id || data.quest?._id;
-      if (!qId) return;
-      setQuestsList((prev) =>
-        prev.map((q) =>
-          (q.id === qId || q._id === qId)
-            ? { ...q, completions: (q.completions || 0) + 1 }
-            : q
-        )
-      );
+    const onRequestSent = ({ requestId, task }) => {
+      console.log("Request broadcast:", requestId);
+      setWaitingForMatch(true);
     };
 
-    socket.on("quest_completed", onQuestCompleted);
-    return () => socket.off("quest_completed", onQuestCompleted);
+    const onAccepted = ({ task, byUsername }) => {
+      setWaitingForMatch(false);
+      // TODO: navigate to messaging with the matched user
+      console.log(`${byUsername} accepted your task: ${task.title}`);
+    };
+
+    socket.on("task_request_sent", onRequestSent);
+    socket.on("task_accepted", onAccepted);
+
+    return () => {
+      socket.off("task_request_sent", onRequestSent);
+      socket.off("task_accepted", onAccepted);
+    };
   }, [socket]);
 
-  const handleComplete = (quest) => {
-    setCompletingQuest(quest);
+  const handleAction = (task, action) => {
+    setConfirmModal({ task, action });
   };
 
-  const handleRatingSubmit = useCallback(({ questId, happinessRating }) => {
-    const quest = completingQuest;
-    if (!quest) return;
+  const handleConfirm = () => {
+    const { task, action } = confirmModal;
 
-    // Emit completion via socket
-    if (socket) {
-      socket.emit("complete_quest", { questId, happinessRating });
+    // Emit to server
+    if (socket && user) {
+      socket.emit("task_request", {
+        task,
+        hotspotId: hotspot.id || hotspot._id,
+        hotspotName: hotspot.name,
+        action,
+        userId: user.id,
+        username: user.username,
+      });
     }
 
-    // Close modal
-    setCompletingQuest(null);
-
-    // Show toast
-    setToast({
-      visible: true,
-      coinAmount: quest.coin_reward || 0,
-      category: quest.category,
-    });
-
-    // Animate card removal
-    setRemovingId(questId);
+    // Remove from list
+    setRemovingId(task.id);
+    setConfirmModal(null);
     setTimeout(() => {
-      setQuestsList((prev) => prev.filter((q) => (q.id || q._id) !== questId));
+      setVisibleTasks((prev) => prev.filter((t) => t.id !== task.id));
       setRemovingId(null);
-    }, 400);
-  }, [completingQuest, socket]);
-
-  const handleRatingCancel = () => {
-    setCompletingQuest(null);
+      setSelectedTask(null);
+    }, 300);
   };
 
-  const handleToastDone = useCallback(() => {
-    setToast({ visible: false, coinAmount: 0, category: null });
-  }, []);
+  const handleCancel = () => {
+    setConfirmModal(null);
+  };
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
-       {} //Header
       <header className="px-4 py-4 bg-surface border-b border-border flex items-center gap-3">
         <button
           onClick={onBack}
@@ -207,73 +96,153 @@ export default function HotspotQuestList({ hotspot, onBack }) {
         </h1>
       </header>
 
-      {} //Quest List
+      {/* Waiting for match banner */}
+      {waitingForMatch && (
+        <div className="px-4 py-3 bg-accent/10 border-b border-accent/20 text-center">
+          <p className="text-sm text-accent font-medium animate-pulse">
+            Looking for someone nearby...
+          </p>
+        </div>
+      )}
+
       <div className="flex-1 overflow-y-auto scrollbar-hide p-4 space-y-3">
-        {loading ? (
-          // Skeleton cards
-          <>
-            {[1, 2, 3].map((i) => (
-              <div
-                key={i}
-                className="bg-surface rounded-2xl border border-border p-4 animate-pulse"
-              >
-                <div className="flex gap-2 mb-3">
-                  <div className="h-4 w-16 bg-base-darker rounded-full" />
-                  <div className="h-4 w-10 bg-base-darker rounded-full" />
-                </div>
-                <div className="h-4 w-3/4 bg-base-darker rounded mb-2" />
-                <div className="h-3 w-1/2 bg-base-darker rounded mb-3" />
-                <div className="h-10 w-full bg-base-darker rounded-xl" />
-              </div>
-            ))}
-          </>
-        ) : questsList.length === 0 ? (
-          // Empty state
+        {visibleTasks.length === 0 ? (
           <div className="flex-1 flex flex-col items-center justify-center py-16 text-center">
             <div className="w-16 h-16 rounded-full bg-base-darker flex items-center justify-center mb-4">
               <CompassIcon className="w-8 h-8 text-text-muted" />
             </div>
             <p className="font-pixel text-[10px] text-text-primary mb-1">
-              No quests here yet
+              No tasks left
             </p>
             <p className="text-xs text-text-muted">
               Check back soon or try another hotspot
             </p>
           </div>
         ) : (
-          questsList.map((quest) => {
-            const qId = quest.id || quest._id;
-            const isRemoving = removingId === qId;
-            return (
-              <div
-                key={qId}
-                className={`transition-all duration-400 ${
-                  isRemoving ? "animate-slide-right opacity-0" : ""
-                }`}
-              >
-                <QuestCard quest={quest} onComplete={handleComplete} />
-              </div>
-            );
-          })
+          visibleTasks.map((task) => (
+            <TaskCard
+              key={task.id}
+              task={task}
+              isSelected={selectedTask === task.id}
+              isRemoving={removingId === task.id}
+              onSelect={() => setSelectedTask(selectedTask === task.id ? null : task.id)}
+              onAction={(action) => handleAction(task, action)}
+            />
+          ))
         )}
       </div>
 
-      {} //Happiness rating modal
-      <HappinessRatingModal
-        quest={completingQuest}
-        isOpen={!!completingQuest}
-        onSubmit={handleRatingSubmit}
-        onCancel={handleRatingCancel}
-      />
-
-      {} //JoyCoin toast
-      <JoyCoinToast
-        coinAmount={toast.coinAmount}
-        category={toast.category}
-        visible={toast.visible}
-        onDone={handleToastDone}
-      />
+      {/* Confirmation Modal */}
+      {confirmModal && (
+        <ConfirmModal
+          task={confirmModal.task}
+          action={confirmModal.action}
+          onConfirm={handleConfirm}
+          onCancel={handleCancel}
+        />
+      )}
     </div>
   );
 }
-*/
+
+function TaskCard({ task, isSelected, isRemoving, onSelect, onAction }) {
+  const color = CATEGORY_COLORS[task.category] || CATEGORY_COLORS["kindness"];
+
+  return (
+    <div
+      className={`bg-surface rounded-2xl border border-border shadow-warm-sm p-4 transition-all duration-300 ${
+        isRemoving ? "opacity-0 translate-x-full" : ""
+      }`}
+    >
+      {/* Category pill */}
+      <div className="flex items-center gap-2 mb-2">
+        <span
+          className="text-[10px] font-medium px-2 py-0.5 rounded-full capitalize"
+          style={{ backgroundColor: color + "18", color }}
+        >
+          {task.category}
+        </span>
+        <span className="text-[10px] text-text-muted ml-auto">
+          +{task.coin_reward} JC
+        </span>
+      </div>
+
+      {/* Title — tappable */}
+      <button
+        onClick={onSelect}
+        className="w-full text-left"
+      >
+        <h3 className="text-sm font-medium text-text-primary leading-snug">
+          {task.title}
+        </h3>
+      </button>
+
+      {/* Request / Offer buttons — shown when selected */}
+      {isSelected && (
+        <div className="flex gap-3 mt-3">
+          <button
+            onClick={() => onAction("request")}
+            className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all active:scale-[0.98] bg-accent text-text-on-accent"
+          >
+            Request
+          </button>
+          <button
+            onClick={() => onAction("offer")}
+            className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all active:scale-[0.98] border-2 border-accent text-accent"
+          >
+            Offer
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ConfirmModal({ task, action, onConfirm, onCancel }) {
+  const isRequest = action === "request";
+  const color = CATEGORY_COLORS[task.category] || CATEGORY_COLORS["kindness"];
+
+  return (
+    <>
+      <div
+        className="fixed inset-0 bg-text-primary/30 z-50"
+        onClick={onCancel}
+      />
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
+        <div className="bg-surface rounded-2xl p-6 shadow-warm max-w-sm w-full animate-fade-in">
+          <div
+            className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4"
+            style={{ backgroundColor: color + "18" }}
+          >
+            <span className="text-2xl">{isRequest ? "🙋" : "🤝"}</span>
+          </div>
+          <h3 className="font-pixel text-[12px] text-text-primary text-center mb-2">
+            {isRequest ? "Request this task?" : "Offer to help?"}
+          </h3>
+          <p className="text-text-secondary text-sm text-center mb-1">
+            {task.title}
+          </p>
+          <p className="text-text-muted text-xs text-center mb-6">
+            {isRequest
+              ? "We'll find someone nearby to help you out."
+              : "We'll match you with someone who needs this."}
+          </p>
+          <div className="flex gap-3">
+            <button
+              onClick={onCancel}
+              className="flex-1 py-3 border border-border rounded-xl text-text-secondary font-medium transition-colors hover:bg-base"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={onConfirm}
+              className="flex-1 py-3 bg-accent text-text-on-accent rounded-xl font-semibold transition-all active:scale-95"
+            >
+              {isRequest ? "Request" : "Offer"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}

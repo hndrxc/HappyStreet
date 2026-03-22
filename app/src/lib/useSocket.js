@@ -16,7 +16,7 @@ function getSocket() {
   return sharedSocket;
 }
 
-export default function useSocket() {
+export default function useSocket(user) {
   const [connected, setConnected] = useState(false);
   const socketRef = useRef(null);
 
@@ -28,48 +28,29 @@ export default function useSocket() {
 
     const onConnect = () => setConnected(true);
     const onDisconnect = () => setConnected(false);
-    const onQuestsInit = (quests) => {
-      // TODO: store initial quest list
-    };
-    const onHotspotsInit = (hotspots) => {
-      // TODO: render hotspots on map
-    };
-    
-    const onQuestCompleted = ({ quest, by }) => {
-      console.log(`${by} just completed: ${quest.title}`);
-    };
 
     socket.on("connect", onConnect);
     socket.on("disconnect", onDisconnect);
-    socket.on("quests_init", onQuestsInit);
-    socket.on("hotspots_init", onHotspotsInit);
-    
-    socket.on("quest_completed", onQuestCompleted);
-    
 
-  
     // Sync initial state
     setConnected(socket.connected);
 
-    
+    // Send location updates with user identity so the server can route task requests
     let watchId;
     if (navigator.geolocation) {
       watchId = navigator.geolocation.watchPosition((pos) => {
         socket.emit("update_location", {
           lat: pos.coords.latitude,
-          lon: pos.coords.longitude
+          lon: pos.coords.longitude,
+          userId: user?.id || null,
+          username: user?.username || null,
         });
       });
     }
 
-
     return () => {
       socket.off("connect", onConnect);
       socket.off("disconnect", onDisconnect);
-      socket.off("quests_init", onQuestsInit);
-      socket.off("hotspots_init", onHotspotsInit);
-      
-      socket.off("quest_completed", onQuestCompleted);
       if (watchId) navigator.geolocation.clearWatch(watchId);
       refCount--;
 
@@ -79,7 +60,7 @@ export default function useSocket() {
         refCount = 0;
       }
     };
-  }, []);
+  }, [user?.id]);
 
   return { socket: socketRef.current, connected };
 }

@@ -3,6 +3,7 @@
 import { useAuth } from "@/context/AuthContext";
 import BottomTabBar from "./BottomTabBar";
 import LoginPage from "./pages/LoginPage";
+import IncomingRequestPopup from "./IncomingRequestPopup";
 
 export default function AppShell({ children }) {
   const { user, isLoading } = useAuth();
@@ -31,6 +32,7 @@ export default function AppShell({ children }) {
         </div>
       </main>
       <BottomTabBar />
+      <IncomingRequestPopup />
     </div>
   );
 }
