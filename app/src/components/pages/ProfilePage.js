@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { fetchUserStats } from "@/lib/api";
-import { CATEGORY_COLORS } from "@/lib/mockData";
+import { CATEGORY_COLORS } from "@/lib/categories";
 
 export default function ProfilePage() {
   const { user, logout } = useAuth();

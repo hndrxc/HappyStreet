@@ -35,23 +35,27 @@ export default function useSocket(user) {
     // Sync initial state
     setConnected(socket.connected);
 
-    // Send location updates with user identity so the server can route task requests
-    let watchId;
-    if (navigator.geolocation) {
-      watchId = navigator.geolocation.watchPosition((pos) => {
-        socket.emit("update_location", {
-          lat: pos.coords.latitude,
-          lon: pos.coords.longitude,
-          userId: user?.id || null,
-          username: user?.username || null,
+    // Only send location when a logged-in user is present
+    let intervalId;
+    if (navigator.geolocation && user?.id) {
+      const sendLocation = () => {
+        navigator.geolocation.getCurrentPosition((pos) => {
+          socket.emit("update_location", {
+            lat: pos.coords.latitude,
+            lon: pos.coords.longitude,
+            userId: user.id,
+            username: user.username,
+          });
         });
-      });
+      };
+      sendLocation();
+      intervalId = setInterval(sendLocation, 5000);
     }
 
     return () => {
       socket.off("connect", onConnect);
       socket.off("disconnect", onDisconnect);
-      if (watchId) navigator.geolocation.clearWatch(watchId);
+      if (intervalId) clearInterval(intervalId);
       refCount--;
 
       if (refCount <= 0) {

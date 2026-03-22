@@ -1,53 +1,78 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { userShares as initialShares } from "@/lib/mockData";
+import { useAuth } from "@/context/AuthContext";
+import { fetchUserShares, sellShare, sellAllShares } from "@/lib/api";
+import useSocket from "@/lib/useSocket";
 import { SharesIcon } from "@/components/icons";
 
 export default function SharesPage() {
-  const [shares, setShares] = useState(initialShares);
+  const { user, token } = useAuth();
+  const { socket } = useSocket(user);
+  const [shares, setShares] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [sellingIds, setSellingIds] = useState(new Set());
   const [showSellAllConfirm, setShowSellAllConfirm] = useState(false);
 
-  // Simulate real-time value updates via socket
   useEffect(() => {
-    const interval = setInterval(() => {
-      setShares((prev) =>
-        prev.map((share) => ({
-          ...share,
-          currentValue: share.currentValue * (0.98 + Math.random() * 0.04), // ±2% fluctuation
-        }))
-      );
-    }, 3000);
-    return () => clearInterval(interval);
-  }, []);
+    if (!user?.id || !token) return;
+    fetchUserShares(user.id, token)
+      .then(setShares)
+      .catch((err) => console.error("Failed to fetch shares:", err))
+      .finally(() => setLoading(false));
+  }, [user?.id, token]);
 
-  const handleSell = (shareId) => {
-    // Add to selling set to trigger animation
+  // Update share prices in real-time when stocks change
+  useEffect(() => {
+    if (!socket) return;
+    const onStockUpdated = (update) => {
+      setShares((prev) =>
+        prev.map((s) =>
+          s.ticker === update.ticker ? { ...s, currentValue: update.current_price } : s
+        )
+      );
+    };
+    socket.on("stock_updated", onStockUpdated);
+    return () => socket.off("stock_updated", onStockUpdated);
+  }, [socket]);
+
+  const handleSell = async (shareId) => {
+    if (!user?.id || !token) return;
     setSellingIds((prev) => new Set([...prev, shareId]));
-    
-    // Remove after animation
-    setTimeout(() => {
-      setShares((prev) => prev.filter((s) => s.id !== shareId));
+    try {
+      await sellShare(user.id, shareId, token);
+      setTimeout(() => {
+        setShares((prev) => prev.filter((s) => s.id !== shareId));
+        setSellingIds((prev) => {
+          const next = new Set(prev);
+          next.delete(shareId);
+          return next;
+        });
+      }, 400);
+    } catch (err) {
+      console.error("Failed to sell share:", err);
       setSellingIds((prev) => {
         const next = new Set(prev);
         next.delete(shareId);
         return next;
       });
-    }, 400);
+    }
   };
 
-  const handleSellAll = () => {
-    // Add all to selling set
+  const handleSellAll = async () => {
+    if (!user?.id || !token) return;
     const allIds = new Set(shares.map((s) => s.id));
     setSellingIds(allIds);
-    
-    // Remove all after animation
-    setTimeout(() => {
-      setShares([]);
+    try {
+      await sellAllShares(user.id, token);
+      setTimeout(() => {
+        setShares([]);
+        setSellingIds(new Set());
+      }, 400);
+    } catch (err) {
+      console.error("Failed to sell all shares:", err);
       setSellingIds(new Set());
-    }, 400);
-    
+    }
     setShowSellAllConfirm(false);
   };
 
@@ -58,7 +83,6 @@ export default function SharesPage() {
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
-      {/* Header */}
       <header className="px-4 py-4 bg-surface border-b border-border">
         <h1 className="font-pixel text-[12px] text-text-primary mb-2">Your Shares</h1>
         <p className="text-text-secondary text-sm">
@@ -66,9 +90,12 @@ export default function SharesPage() {
         </p>
       </header>
 
-      {/* Shares List */}
       <div className="flex-1 overflow-y-auto scrollbar-hide p-4">
-        {shares.length === 0 ? (
+        {loading ? (
+          <div className="flex items-center justify-center h-full">
+            <p className="text-text-muted text-sm">Loading shares...</p>
+          </div>
+        ) : shares.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center">
             <div className="w-16 h-16 rounded-full bg-base-darker flex items-center justify-center mb-4">
               <SharesIcon className="w-8 h-8 text-text-muted" />
@@ -89,7 +116,6 @@ export default function SharesPage() {
         )}
       </div>
 
-      {/* Sell All Button */}
       {shares.length > 0 && (
         <div className="p-4 bg-surface border-t border-border">
           <button
@@ -101,7 +127,6 @@ export default function SharesPage() {
         </div>
       )}
 
-      {/* Sell All Confirm Modal */}
       {showSellAllConfirm && (
         <SellAllConfirmModal
           totalValue={totalValue}
@@ -164,7 +189,7 @@ function SellAllConfirmModal({ totalValue, onConfirm, onCancel }) {
 
   return (
     <>
-      <div 
+      <div
         className="fixed inset-0 bg-text-primary/30 z-50"
         onClick={onCancel}
       />

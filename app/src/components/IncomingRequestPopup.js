@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CATEGORY_COLORS } from "@/lib/mockData";
+import { CATEGORY_COLORS } from "@/lib/categories";
 import { useAuth } from "@/context/AuthContext";
 import useSocket from "@/lib/useSocket";
 

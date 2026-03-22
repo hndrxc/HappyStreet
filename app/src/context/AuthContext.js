@@ -7,25 +7,28 @@ const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
+  const [token, setToken] = useState(null);
   const [isLoading, setIsLoading] = useState(() => {
     if (typeof window === "undefined") return true;
     return Boolean(localStorage.getItem("happystreet_token"));
   });
 
   useEffect(() => {
-    const token = localStorage.getItem("happystreet_token");
-    if (!token) return;
+    const stored = localStorage.getItem("happystreet_token");
+    if (!stored) return;
+    setToken(stored);
 
-    authMe(token).then((userData) => {
+    authMe(stored).then((userData) => {
       if (userData) setUser(userData);
-      else localStorage.removeItem("happystreet_token");
+      else { localStorage.removeItem("happystreet_token"); setToken(null); }
     }).finally(() => setIsLoading(false));
   }, []);
 
   const login = async (username, password) => {
     try {
-      const { token, user: userData } = await authLogin(username, password);
-      localStorage.setItem("happystreet_token", token);
+      const { token: newToken, user: userData } = await authLogin(username, password);
+      localStorage.setItem("happystreet_token", newToken);
+      setToken(newToken);
       setUser(userData);
       return { success: true };
     } catch (err) {
@@ -35,8 +38,9 @@ export function AuthProvider({ children }) {
 
   const register = async (username, password) => {
     try {
-      const { token, user: userData } = await authRegister(username, password);
-      localStorage.setItem("happystreet_token", token);
+      const { token: newToken, user: userData } = await authRegister(username, password);
+      localStorage.setItem("happystreet_token", newToken);
+      setToken(newToken);
       setUser(userData);
       return { success: true };
     } catch (err) {
@@ -47,10 +51,11 @@ export function AuthProvider({ children }) {
   const logout = () => {
     localStorage.removeItem("happystreet_token");
     setUser(null);
+    setToken(null);
   };
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, register, logout }}>
+    <AuthContext.Provider value={{ user, token, isLoading, login, register, logout }}>
       {children}
     </AuthContext.Provider>
   );
