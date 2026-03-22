@@ -5,12 +5,19 @@ import { MapContainer, TileLayer, CircleMarker, Circle, useMap } from "react-lea
 import useLocation from "@/lib/useLocation";
 import useSocket from "@/lib/useSocket";
 import { fetchNearbyHotspots, geoToLeaflet, fetchHotspotById } from "@/lib/api";
-import { hotspots as mockHotspots, CATEGORY_COLORS } from "@/lib/mockData";
 import { LocationCrosshairIcon } from "@/components/icons";
 
 // Default center: LSU campus
 const DEFAULT_CENTER = [30.4133, -91.1800];
 const DEFAULT_ZOOM = 15;
+const CATEGORY_COLORS = {
+  kindness: "#E8A020",
+  mindfulness: "#8B5CF6",
+  "social connection": "#3B82F6",
+  "physical activity": "#10B981",
+  creativity: "#F472B6",
+  gratitude: "#F59E0B",
+};
 
 function RecenterButton({ position }) {
   const map = useMap();
@@ -85,7 +92,7 @@ function MapResizeSync() {
 export default function HotspotMapInner({ onSelectHotspot, focusHotspotId }) {
   const { location, error, loading } = useLocation();
   const { socket } = useSocket();
-  const [hotspotsList, setHotspotsList] = useState(mockHotspots);
+  const [hotspotsList, setHotspotsList] = useState([]);
   const [selectedHotspot, setSelectedHotspot] = useState(null);
   const [pingHotspotId, setPingHotspotId] = useState(null);
   const lastFetchPosRef = useRef(null);
@@ -129,10 +136,10 @@ export default function HotspotMapInner({ onSelectHotspot, focusHotspotId }) {
 
     fetchNearbyHotspots(location.lat, location.lon, 2000)
       .then((data) => {
-        if (data && data.length > 0) setHotspotsList(data);
+        setHotspotsList(Array.isArray(data) ? data : []);
       })
       .catch(() => {
-        // Keep mock data as fallback
+        setHotspotsList([]);
       });
   }, [location]);
 

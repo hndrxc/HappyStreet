@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { leaderboard, quests, currentUser } from "@/lib/mockData";
+import { leaderboard, currentUser } from "@/lib/mockData";
 
 const SORT_OPTIONS = [
   { id: "balance", label: "Balance" },
@@ -12,7 +12,7 @@ const SORT_OPTIONS = [
 export default function LeaderboardPage() {
   const [activeTab, setActiveTab] = useState("global");
   const [sortBy, setSortBy] = useState("balance");
-  const [selectedQuest, setSelectedQuest] = useState(quests[0]?.id || "");
+  const [selectedQuest, setSelectedQuest] = useState("");
 
   const data = activeTab === "global" ? leaderboard.global : leaderboard.interacted;
 
@@ -76,9 +76,7 @@ export default function LeaderboardPage() {
               onChange={(e) => setSelectedQuest(e.target.value)}
               className="flex-1 px-3 py-2 bg-base rounded-lg border border-border text-sm text-text-primary focus:outline-none focus:border-accent"
             >
-              {quests.map((q) => (
-                <option key={q.id} value={q.id}>{q.title}</option>
-              ))}
+              <option value="">All Quests</option>
             </select>
           )}
         </div>

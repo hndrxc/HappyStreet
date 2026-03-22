@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { fetchNearbyQuests } from "@/lib/api";
-import { quests as mockQuests } from "@/lib/mockData";
 import useSocket from "@/lib/useSocket";
 import QuestCard from "./QuestCard";
 import HappinessRatingModal from "./HappinessRatingModal";
@@ -19,24 +18,17 @@ export default function HotspotQuestList({ hotspot, onBack }) {
 
   // Fetch quests for this hotspot
   useEffect(() => {
+    if (!hotspot) return;
+
     const hotspotId = hotspot.id || hotspot._id;
 
     setLoading(true);
     fetchNearbyQuests({ hotspotId, lat: null, lon: null })
       .then((data) => {
-        if (data && data.length > 0) {
-          setQuestsList(data);
-        } else {
-          // Fallback to mock quests filtered by hotspot
-          setQuestsList(
-            mockQuests.filter((q) => q.hotspot_id === hotspotId)
-          );
-        }
+        setQuestsList(Array.isArray(data) ? data : []);
       })
       .catch(() => {
-        setQuestsList(
-          mockQuests.filter((q) => q.hotspot_id === (hotspot.id || hotspot._id))
-        );
+        setQuestsList([]);
       })
       .finally(() => setLoading(false));
   }, [hotspot]);

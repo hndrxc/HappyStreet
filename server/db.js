@@ -57,6 +57,75 @@ function normalizeQuest(doc) {
   };
 }
 
+function toRadians(value) {
+  return (value * Math.PI) / 180;
+}
+
+function haversineMeters(lat1, lon1, lat2, lon2) {
+  const earthRadiusMeters = 6371000;
+  const dLat = toRadians(lat2 - lat1);
+  const dLon = toRadians(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRadians(lat1)) *
+      Math.cos(toRadians(lat2)) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  return 2 * earthRadiusMeters * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function normalizeHotspot(doc) {
+  if (!doc) return null;
+
+  const rawId = doc._id && typeof doc._id.toString === "function"
+    ? doc._id.toString()
+    : doc._id;
+
+  const lat = Number.isFinite(doc.lat)
+    ? doc.lat
+    : (Array.isArray(doc.location?.coordinates) ? doc.location.coordinates[1] : null);
+  const lon = Number.isFinite(doc.lon)
+    ? doc.lon
+    : (Array.isArray(doc.location?.coordinates) ? doc.location.coordinates[0] : null);
+
+  const questqIds = Array.isArray(doc.questq_ids) ? doc.questq_ids : [];
+  const legacyQuestIds = Array.isArray(doc.quest_ids) ? doc.quest_ids : [];
+  const questIds = Array.from(
+    new Set(
+      [
+        ...legacyQuestIds,
+        ...questqIds.map((entry) => {
+          if (entry == null) return null;
+          if (typeof entry === "string") return entry;
+          if (typeof entry.quest_id === "string") return entry.quest_id;
+          if (entry.quest_id && typeof entry.quest_id.toString === "function") return entry.quest_id.toString();
+          if (entry._id && typeof entry._id.toString === "function") return entry._id.toString();
+          return null;
+        }),
+      ]
+        .filter(Boolean)
+        .map(String)
+    )
+  );
+
+  return {
+    ...doc,
+    _id: rawId,
+    id: doc.id ?? rawId,
+    lat,
+    lon,
+    radius: Number.isFinite(doc.radius) ? doc.radius : 80,
+    radius_meters: Number.isFinite(doc.radius_meters) ? doc.radius_meters : (Number.isFinite(doc.radius) ? doc.radius : 80),
+    questq_ids: questqIds,
+    quest_ids: questIds,
+    location:
+      doc.location ||
+      (Number.isFinite(lat) && Number.isFinite(lon)
+        ? { type: "Point", coordinates: [lon, lat] }
+        : null),
+  };
+}
+
 async function ensureSeedData() {
   const quests = db.collection("questTable");
   const categories = db.collection("categories");
@@ -197,6 +266,27 @@ async function ensureSeedData() {
 
   // Geospatial index for /quests/nearby — idempotent, null locations auto-excluded.
   await quests.createIndex({ location: "2dsphere" });
+
+  const hotspots = db.collection("hotspotTable");
+  await hotspots.updateMany(
+    {
+      location: { $exists: false },
+      lat: { $type: "number" },
+      lon: { $type: "number" },
+    },
+    [
+      {
+        $set: {
+          location: { type: "Point", coordinates: ["$lon", "$lat"] },
+        },
+      },
+    ]
+  );
+  await hotspots.updateMany(
+    { questq_ids: { $exists: false } },
+    { $set: { questq_ids: [] } }
+  );
+  await hotspots.createIndex({ location: "2dsphere" });
 }
 
 async function connect(uri) {
@@ -298,13 +388,42 @@ async function completeQuest(questId) {
 }
 
 // --- Nearby Quests (geo-aware) ---
-async function getNearbyQuests({ lat, lon, radius = 1000, category, difficulty, limit = 20 }) {
+async function getNearbyQuests({ lat, lon, radius = 1000, category, difficulty, limit = 20, hotspotId }) {
   const quests = db.collection("questTable");
   const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.floor(limit)) : 20;
   const normalizedCategory = normalizeCategory(category);
   const categoryFilter = normalizedCategory && isValidCategory(normalizedCategory)
     ? normalizedCategory
     : null;
+  const baseFilter = { active: true };
+  if (categoryFilter) baseFilter.category = categoryFilter;
+  if (difficulty) baseFilter.difficulty_tier = difficulty;
+
+  if (hotspotId) {
+    const hotspotOr = [{ hotspot_id: hotspotId }];
+    if (ObjectId.isValid(hotspotId)) {
+      hotspotOr.push({ hotspot_id: new ObjectId(hotspotId) });
+    }
+
+    const hotspotQuests = await quests
+      .find({ ...baseFilter, $or: hotspotOr })
+      .limit(safeLimit)
+      .toArray();
+
+    return hotspotQuests.map((doc) => ({
+      ...normalizeQuest(doc),
+      distance_meters: null,
+    }));
+  }
+
+  const hasCoords = Number.isFinite(lat) && Number.isFinite(lon);
+  if (!hasCoords) {
+    const globalOnly = await quests.find({ ...baseFilter, location: null }).limit(safeLimit).toArray();
+    return globalOnly.map((doc) => ({
+      ...normalizeQuest(doc),
+      distance_meters: null,
+    }));
+  }
 
   // 1) Geo-located quests within radius via $geoNear aggregation
   const pipeline = [
@@ -314,20 +433,16 @@ async function getNearbyQuests({ lat, lon, radius = 1000, category, difficulty, 
         distanceField: "distance_meters",
         maxDistance: radius,
         spherical: true,
-        query: { active: true },
+        query: baseFilter,
       },
     },
   ];
-  if (categoryFilter) pipeline.push({ $match: { category: categoryFilter } });
-  if (difficulty) pipeline.push({ $match: { difficulty_tier: difficulty } });
   pipeline.push({ $limit: safeLimit });
 
   const geoQuests = await quests.aggregate(pipeline).toArray();
 
   // 2) Global quests (location is null) — always included
-  const globalFilter = { location: null, active: true };
-  if (categoryFilter) globalFilter.category = categoryFilter;
-  if (difficulty) globalFilter.difficulty_tier = difficulty;
+  const globalFilter = { ...baseFilter, location: null };
 
   const globalQuests = await quests.find(globalFilter).limit(safeLimit).toArray();
 
@@ -400,15 +515,57 @@ async function updateUserBalance(userId, amount) {
 
 // --- Hotspots ---
 async function getHotspots() {
-  return await db.collection("hotspotTable").find().toArray();
+  const docs = await db.collection("hotspotTable").find().toArray();
+  return docs.map(normalizeHotspot);
 }
-async function getHotspotById(id){
-  return await db.collection("hotspotTable").findOne({id: parseInt(id)});
+async function getHotspotById(id) {
+  const hotspots = db.collection("hotspotTable");
+  const idText = String(id).trim();
+  let doc = null;
+
+  if (/^-?\d+$/.test(idText)) {
+    doc = await hotspots.findOne({ id: parseInt(idText, 10) });
+  }
+
+  // Backward compatibility for mock-style IDs like hotspot_002.
+  if (!doc) {
+    const legacyMatch = /^hotspot_(\d+)$/i.exec(idText);
+    if (legacyMatch) {
+      doc = await hotspots.findOne({ id: parseInt(legacyMatch[1], 10) });
+    }
+  }
+
+  if (!doc && ObjectId.isValid(idText)) {
+    doc = await hotspots.findOne({ _id: new ObjectId(idText) });
+  }
+
+  // Allow string ids in `id` for mixed datasets.
+  if (!doc) {
+    doc = await hotspots.findOne({ id: idText });
+  }
+  if (!doc) {
+    doc = await hotspots.findOne({ _id: id });
+  }
+
+  return normalizeHotspot(doc);
 }
 
 async function createHotspot(name, lat, lon, radius = 80) {
-  const result = await db.collection("hotspotTable").insertOne({ name, lat, lon, radius, questq_ids: [] });
-  return await db.collection("hotspotTable").findOne({ _id: result.insertedId });
+  const hotspots = db.collection("hotspotTable");
+  const latest = await hotspots.find({ id: { $type: "number" } }).sort({ id: -1 }).limit(1).toArray();
+  const nextId = latest.length > 0 ? latest[0].id + 1 : 0;
+
+  const result = await hotspots.insertOne({
+    id: nextId,
+    name,
+    lat,
+    lon,
+    radius,
+    questq_ids: [],
+    location: { type: "Point", coordinates: [lon, lat] },
+  });
+  const doc = await hotspots.findOne({ _id: result.insertedId });
+  return normalizeHotspot(doc);
 }
 
 // --- Tunnels (Exchanges) ---
@@ -434,14 +591,23 @@ async function updateTunnelStatus(tunnelId, status, extra = {}) {
 }
 
 async function getNearbyHotspots(lat, lon, radius = 2000) {
-  return await db.collection("hotspotTable").find({
-    location: {
-      $nearSphere: {
-        $geometry: { type: "Point", coordinates: [lon, lat] },
-        $maxDistance: radius
+  const hotspots = await db.collection("hotspotTable").find().toArray();
+  const normalized = hotspots.map(normalizeHotspot).filter(Boolean);
+
+  return normalized
+    .map((hotspot) => {
+      if (!Number.isFinite(hotspot.lat) || !Number.isFinite(hotspot.lon)) {
+        return null;
       }
-    }
-  }).toArray();
+      const distance = haversineMeters(lat, lon, hotspot.lat, hotspot.lon);
+      if (distance > radius) return null;
+      return {
+        ...hotspot,
+        distance_meters: Math.round(distance),
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.distance_meters - b.distance_meters);
 }
 
 module.exports = {
