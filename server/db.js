@@ -645,6 +645,41 @@ async function getNearbyHotspots(lat, lon, radius = 10000) {
     .sort((a, b) => a.distance_meters - b.distance_meters);
 }
 
+async function joinQuestQueue(hotspotId, questId, userId) {
+  const hotspot = await getHotspotById(hotspotId);
+  if (!hotspot || !questId || !userId) return null;
+
+  const hotspots = db.collection("hotspotTable");
+  const targetId = ObjectId.isValid(String(hotspot._id))
+    ? new ObjectId(String(hotspot._id))
+    : hotspot._id;
+
+  const queueEntries = Array.isArray(hotspot.questq_ids) ? hotspot.questq_ids : [];
+  const matchedEntry = queueEntries.find((entry) => String(entry?.quest_id) === String(questId));
+
+  if (matchedEntry) {
+    await hotspots.updateOne(
+      { _id: targetId },
+      { $addToSet: { "questq_ids.$[q].recipient_ids": String(userId) } },
+      { arrayFilters: [{ "q.quest_id": matchedEntry.quest_id }] }
+    );
+  } else {
+    await hotspots.updateOne(
+      { _id: targetId },
+      {
+        $push: {
+          questq_ids: {
+            quest_id: String(questId),
+            recipient_ids: [String(userId)],
+          },
+        },
+      }
+    );
+  }
+
+  return await getHotspotById(hotspot._id);
+}
+
 async function acquireQuestRecipientForCompletion(questId, requestedRecipientId) {
   const hotspots = db.collection("hotspotTable");
   const allHotspots = await hotspots.find().toArray();
@@ -730,6 +765,7 @@ module.exports = {
   getQuests, createQuest, completeQuest, getNearbyQuests,
   getUser, getUserByUsername, createUser, updateUserLocation, updateUserBalance,
   getHotspots, createHotspot, getHotspotById, getNearbyHotspots,
+  joinQuestQueue,
   acquireQuestRecipientForCompletion, requeueQuestRecipient,
   getTunnel, createTunnel, updateTunnelStatus,
 };

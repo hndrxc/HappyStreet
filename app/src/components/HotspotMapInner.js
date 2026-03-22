@@ -171,17 +171,14 @@ export default function HotspotMapInner({ onSelectHotspot, focusHotspotId }) {
     if (!socket) return;
 
     const onHotspotUpdated = (data) => {
-      setHotspotsList((prev) =>
-        prev.map((h) =>
-          (h.id === data.hotspot_id || h._id === data.hotspot_id)
-            ? { ...h, heat_score: data.heat_score, name: data.name }
-            : h
-        )
-      );
-      // Trigger ping animation
-      setPingHotspotId(data.hotspot_id);
-      setTimeout(() => setPingHotspotId(null), 1000);
-    };
+  setHotspotsList((prev) =>
+    prev.map((h) =>
+      (h.id === data.hotspot_id || h._id === data.hotspot_id)
+        ? { ...h, questq_ids: data.questq_ids }
+        : h
+    )
+  );
+};
 
     socket.on("hotspot_updated", onHotspotUpdated);
     return () => socket.off("hotspot_updated", onHotspotUpdated);

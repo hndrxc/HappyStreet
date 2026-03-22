@@ -383,6 +383,28 @@ io.on("connection", async (socket) => {
     }
   });
 
+  socket.on("join_quest", async (payload) => {
+    try {
+      const questId = payload?.questId;
+      const userId = payload?.userId;
+      const hotspotId = payload?.hotspotId;
+      if (!questId || !userId || !hotspotId) return;
+
+      const hotspot = await db.joinQuestQueue(hotspotId, questId, userId);
+      if (!hotspot) return;
+
+      io.emit("hotspot_updated", {
+        hotspot_id: hotspot._id || hotspot.id,
+        name: hotspot.name,
+        heat_score: hotspot.heat_score || 0,
+        questq_ids: hotspot.questq_ids || [],
+        quest_ids: hotspot.quest_ids || [],
+      });
+    } catch (err) {
+      console.error("join_quest failed:", err);
+    }
+  });
+
   socket.on("complete_quest", async (payload) => {
     try {
       const questId = typeof payload === "string" ? payload : payload?.questId;
@@ -392,7 +414,6 @@ io.on("connection", async (socket) => {
           ? (payload?.recipientId ?? payload?.userId ?? null)
           : null;
 
-      // Enforce recipient queue semantics: no completion if nobody can verify/receive.
       const queueAssignment = await db.acquireQuestRecipientForCompletion(
         questId,
         requestedRecipientId

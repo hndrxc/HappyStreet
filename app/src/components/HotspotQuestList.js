@@ -1,6 +1,97 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import useSocket from "@/lib/useSocket";
+import QuestCard from "./QuestCard";
+import { ArrowLeftIcon, CompassIcon } from "./icons";
+import { useAuth } from "@/context/AuthContext";
+
+export default function HotspotQuestList({ hotspot, onBack }) {
+  const [questsList, setQuestsList] = useState(hotspot.questq_ids || []);
+  const { socket } = useSocket();
+
+  // Keep queue in sync with hotspot prop changes
+  useEffect(() => {
+    setQuestsList(hotspot.questq_ids || []);
+  }, [hotspot]);
+
+  // Listen for real-time queue updates
+  useEffect(() => {
+    if (!socket) return;
+
+    const onHotspotUpdated = (data) => {
+      const id = hotspot.id || hotspot._id;
+      if (data.hotspot_id !== id) return;
+      setQuestsList(data.questq_ids || []);
+    };
+
+    socket.on("hotspot_updated", onHotspotUpdated);
+    return () => socket.off("hotspot_updated", onHotspotUpdated);
+  }, [socket, hotspot]);
+
+  const { user } = useAuth();
+
+const handleClaim = useCallback((quest) => {
+  if (!socket || !user) return;
+  socket.emit("join_quest", {
+    questId: quest.quest_id,
+    userId: user._id,
+    hotspotId: hotspot.id || hotspot._id,
+  });
+}, [socket, hotspot, user]);
+
+  return (
+    <div className="flex-1 flex flex-col overflow-hidden">
+      <header className="px-4 py-4 bg-surface border-b border-border flex items-center gap-3">
+        <button
+          onClick={onBack}
+          className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-base-darker transition-colors"
+        >
+          <ArrowLeftIcon className="w-5 h-5 text-text-secondary" />
+        </button>
+        <div className="w-3 h-3 rounded-full bg-success animate-pulse" />
+        <h1 className="font-pixel text-[11px] text-text-primary truncate">
+          {hotspot.name}
+        </h1>
+      </header>
+
+      <div className="flex-1 overflow-y-auto scrollbar-hide p-4 space-y-3">
+        {questsList.length === 0 ? (
+          <div className="flex-1 flex flex-col items-center justify-center py-16 text-center">
+            <div className="w-16 h-16 rounded-full bg-base-darker flex items-center justify-center mb-4">
+              <CompassIcon className="w-8 h-8 text-text-muted" />
+            </div>
+            <p className="font-pixel text-[10px] text-text-primary mb-1">
+              No quests here yet
+            </p>
+            <p className="text-xs text-text-muted">
+              Check back soon or try another hotspot
+            </p>
+          </div>
+        ) : (
+          questsList.map((quest) => {
+            const qId = quest.quest_id;
+            return (
+              <div key={qId}>
+                <QuestCard quest={quest} onComplete={handleClaim} />
+              </div>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+}
+
+
+
+/*
+original, wrong code
+
+
+"use client";
+
+import { useEffect, useState, useCallback } from "react";
 import { fetchNearbyQuests } from "@/lib/api";
 import useSocket from "@/lib/useSocket";
 import QuestCard from "./QuestCard";
@@ -94,7 +185,7 @@ export default function HotspotQuestList({ hotspot, onBack }) {
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
-      {/* Header */}
+       {} //Header
       <header className="px-4 py-4 bg-surface border-b border-border flex items-center gap-3">
         <button
           onClick={onBack}
@@ -108,7 +199,7 @@ export default function HotspotQuestList({ hotspot, onBack }) {
         </h1>
       </header>
 
-      {/* Quest list */}
+      {} //Quest List
       <div className="flex-1 overflow-y-auto scrollbar-hide p-4 space-y-3">
         {loading ? (
           // Skeleton cards
@@ -159,7 +250,7 @@ export default function HotspotQuestList({ hotspot, onBack }) {
         )}
       </div>
 
-      {/* Happiness rating modal */}
+      {} //Happiness rating modal
       <HappinessRatingModal
         quest={completingQuest}
         isOpen={!!completingQuest}
@@ -167,7 +258,7 @@ export default function HotspotQuestList({ hotspot, onBack }) {
         onCancel={handleRatingCancel}
       />
 
-      {/* JoyCoin toast */}
+      {} //JoyCoin toast
       <JoyCoinToast
         coinAmount={toast.coinAmount}
         category={toast.category}
@@ -177,3 +268,4 @@ export default function HotspotQuestList({ hotspot, onBack }) {
     </div>
   );
 }
+*/
