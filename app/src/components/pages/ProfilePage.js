@@ -19,12 +19,14 @@ export default function ProfilePage() {
 
     fetchUserStats(userId)
       .then((data) => {
+        console.log("[Profile] fetched stats:", data);
         if (!isCancelled) {
           setStats(data);
           setStatsError("");
         }
       })
-      .catch(() => {
+      .catch((err) => {
+        console.error("[Profile] fetch failed:", err);
         if (!isCancelled) {
           setStatsError("Could not load latest profile stats.");
         }

@@ -27,8 +27,13 @@ export default function MarketDashboard() {
   // Fetch initial market data
   useEffect(() => {
     fetchMarket()
-      .then((data) => setStocks(Array.isArray(data) ? data : []))
-      .catch(() => {})
+      .then((data) => {
+        console.log("[Market] fetched:", data);
+        setStocks(Array.isArray(data) ? data : []);
+      })
+      .catch((err) => {
+        console.error("[Market] fetch failed:", err);
+      })
       .finally(() => setLoading(false));
   }, []);
 

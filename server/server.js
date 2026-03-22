@@ -893,14 +893,18 @@ io.on("connection", async (socket) => {
             coinsEarned: updated.coin_reward || 0,
           });
 
-          // Recalculate stock price
+          // Recalculate ALL stock prices (supply/demand)
           if (updated.category) {
             try {
               const { recalculateStockPrice } = require("./market/pricing");
-              console.log("[stock] recalculating for category:", updated.category);
-              const stockUpdate = await recalculateStockPrice(db.getDb(), updated.category);
-              console.log("[stock] result:", stockUpdate ? `${stockUpdate.ticker} = $${stockUpdate.current_price}` : "null");
-              if (stockUpdate) io.emit("stock_updated", stockUpdate);
+              console.log("[stock] recalculating all stocks after completion in:", updated.category);
+              const allUpdates = await recalculateStockPrice(db.getDb(), updated.category, happinessRating);
+              if (Array.isArray(allUpdates)) {
+                for (const stockUpdate of allUpdates) {
+                  console.log("[stock]", stockUpdate.ticker, "=", "$" + stockUpdate.current_price);
+                  io.emit("stock_updated", stockUpdate);
+                }
+              }
             } catch (priceErr) {
               console.error("stock recalculation failed:", priceErr);
             }
@@ -964,15 +968,17 @@ io.on("connection", async (socket) => {
         });
       }
 
-      // Recalculate stock price for the completed quest's category
+      // Recalculate ALL stock prices (supply/demand)
       if (updated.category) {
         try {
           const { recalculateStockPrice } = require("./market/pricing");
-          console.log("[stock] recalculating for category:", updated.category);
-          const stockUpdate = await recalculateStockPrice(db.getDb(), updated.category);
-          console.log("[stock] result:", stockUpdate ? `${stockUpdate.ticker} = $${stockUpdate.current_price}` : "null");
-          if (stockUpdate) {
-            io.emit("stock_updated", stockUpdate);
+          console.log("[stock] recalculating all stocks after completion in:", updated.category);
+          const allUpdates = await recalculateStockPrice(db.getDb(), updated.category, happinessRating);
+          if (Array.isArray(allUpdates)) {
+            for (const stockUpdate of allUpdates) {
+              console.log("[stock]", stockUpdate.ticker, "=", "$" + stockUpdate.current_price);
+              io.emit("stock_updated", stockUpdate);
+            }
           }
         } catch (priceErr) {
           console.error("stock recalculation failed:", priceErr);

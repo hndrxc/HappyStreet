@@ -11,8 +11,15 @@ const TICKER_TO_CATEGORY = Object.fromEntries(
   Object.entries(TICKERS).map(([cat, tick]) => [tick, cat])
 );
 
-const BASE_PRICE = 100;
 const MAX_HISTORY = 50;
+const MIN_PRICE = 10;
+const MAX_PRICE = 500;
+const BASE_DROP = 3;
+const BASE_RISE = 1;
+
+function clampPrice(price) {
+  return Math.round(Math.max(MIN_PRICE, Math.min(MAX_PRICE, price)) * 100) / 100;
+}
 
 function findPriceAt(history, targetTime) {
   let closest = null;
@@ -27,86 +34,133 @@ function findPriceAt(history, targetTime) {
   return closest ? closest.price : null;
 }
 
-async function recalculateStockPrice(db, categoryName) {
+/**
+ * Supply/demand stock pricing:
+ * - Completed stock goes DOWN proportional to its popularity
+ * - All other stocks go UP proportional to their unpopularity
+ * - Happiness rating softens or amplifies the drop
+ *
+ * Returns array of ALL updated stocks (not just the completed one).
+ */
+async function recalculateStockPrice(db, categoryName, happinessRating) {
   const ticker = TICKERS[categoryName];
   if (!ticker) return null;
 
-  // Momentum: rolling average of last 20 happiness ratings
-  const recentCompletions = await db.collection("completions")
-    .find({ category: categoryName })
-    .sort({ completed_at: -1 })
-    .limit(20)
-    .toArray();
-
-  const validRatings = recentCompletions.filter(c => c.happiness_rating != null && Number.isFinite(c.happiness_rating));
-  const momentum = validRatings.length > 0
-    ? validRatings.reduce((sum, c) => sum + c.happiness_rating, 0) / validRatings.length
-    : 3.0;
-
-  // Volume: completions in the last hour
-  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-  const volume = await db.collection("completions")
-    .countDocuments({ category: categoryName, completed_at: { $gte: oneHourAgo } });
-
-  // Price formula
-  const price = BASE_PRICE + (momentum - 3) * 20 + Math.log(volume + 1) * 10;
-  const roundedPrice = Math.round(price * 100) / 100;
   const now = new Date();
+  const allCategories = Object.keys(TICKERS);
 
-  // Read-modify-write for price_history
-  const existing = await db.collection("stocks").findOne({ ticker });
-  const history = existing?.price_history || [];
-  history.push({ price: roundedPrice, timestamp: now });
-  if (history.length > MAX_HISTORY) {
-    history.splice(0, history.length - MAX_HISTORY);
+  // Get completion counts for every category
+  const completionCounts = {};
+  let totalCompletions = 0;
+  for (const cat of allCategories) {
+    const count = await db.collection("completions").countDocuments({ category: cat });
+    completionCounts[cat] = count;
+    totalCompletions += count;
   }
 
-  const hourAgoPrice = findPriceAt(history, Date.now() - 3600000);
-  const dayAgoPrice = findPriceAt(history, Date.now() - 86400000);
-  const hourChange = hourAgoPrice ? Math.round(((roundedPrice - hourAgoPrice) / hourAgoPrice) * 10000) / 100 : 0;
-  const dayChange = dayAgoPrice ? Math.round(((roundedPrice - dayAgoPrice) / dayAgoPrice) * 10000) / 100 : 0;
+  // If no completions at all, treat as equal distribution
+  if (totalCompletions === 0) totalCompletions = 1;
 
-  const totalCompletions = await db.collection("completions")
-    .countDocuments({ category: categoryName });
+  // Read all current stock documents
+  const allStocks = await db.collection("stocks").find().toArray();
+  const stockMap = {};
+  for (const s of allStocks) {
+    stockMap[s.ticker] = s;
+  }
 
-  await db.collection("stocks").updateOne(
-    { ticker },
-    {
-      $set: {
-        name: categoryName,
-        ticker,
-        current_price: roundedPrice,
-        price_history: history,
-        avg_happiness: Math.round(momentum * 100) / 100,
-        total_completions: totalCompletions,
-        hour_change: hourChange,
-        day_change: dayChange,
-        updated_at: now,
+  const rating = (happinessRating != null && Number.isFinite(happinessRating))
+    ? Math.max(1, Math.min(5, happinessRating))
+    : null;
+
+  // Happiness modifier: rating 5 → 0.5 (half the drop), rating 1 → 2.0 (double the drop), null → 1.0
+  const happinessMod = rating ? (2.0 - ((rating - 1) / 4) * 1.5) : 1.0;
+
+  const updatedStocks = [];
+
+  for (const cat of allCategories) {
+    const catTicker = TICKERS[cat];
+    const existing = stockMap[catTicker];
+    const currentPrice = existing?.current_price ?? 100;
+    const history = existing?.price_history ? [...existing.price_history] : [];
+    const catCompletions = completionCounts[cat] || 0;
+    const popularity = catCompletions / totalCompletions; // 0 to 1
+
+    let newPrice;
+
+    if (cat === categoryName) {
+      // COMPLETED STOCK: price goes DOWN
+      // Popular stocks drop more
+      const drop = BASE_DROP * (0.5 + popularity) * happinessMod;
+      newPrice = clampPrice(currentPrice - drop);
+    } else {
+      // OTHER STOCKS: price goes UP
+      // Unpopular stocks rise more
+      const unpopularity = 1 - popularity;
+      const rise = BASE_RISE * (0.5 + unpopularity);
+      newPrice = clampPrice(currentPrice + rise);
+    }
+
+    // Update price history
+    history.push({ price: newPrice, timestamp: now });
+    if (history.length > MAX_HISTORY) {
+      history.splice(0, history.length - MAX_HISTORY);
+    }
+
+    // Calculate change percentages
+    const hourAgoPrice = findPriceAt(history, Date.now() - 3600000);
+    const dayAgoPrice = findPriceAt(history, Date.now() - 86400000);
+    const hourChange = hourAgoPrice ? Math.round(((newPrice - hourAgoPrice) / hourAgoPrice) * 10000) / 100 : 0;
+    const dayChange = dayAgoPrice ? Math.round(((newPrice - dayAgoPrice) / dayAgoPrice) * 10000) / 100 : 0;
+
+    // Avg happiness for this category (from recent completions)
+    const recentRatings = await db.collection("completions")
+      .find({ category: cat, happiness_rating: { $ne: null } })
+      .sort({ completed_at: -1 })
+      .limit(20)
+      .toArray();
+    const avgHappiness = recentRatings.length > 0
+      ? Math.round((recentRatings.reduce((s, c) => s + c.happiness_rating, 0) / recentRatings.length) * 100) / 100
+      : 3.0;
+
+    // Write to DB
+    await db.collection("stocks").updateOne(
+      { ticker: catTicker },
+      {
+        $set: {
+          name: cat,
+          ticker: catTicker,
+          current_price: newPrice,
+          price_history: history,
+          avg_happiness: avgHappiness,
+          total_completions: catCompletions,
+          hour_change: hourChange,
+          day_change: dayChange,
+          updated_at: now,
+        },
       },
-    },
-    { upsert: true }
-  );
+      { upsert: true }
+    );
 
-  return {
-    ticker,
-    name: categoryName,
-    current_price: roundedPrice,
-    hour_change: hourChange,
-    day_change: dayChange,
-    sparkline: history.slice(-20).map((h) => h.price),
-    avg_happiness: Math.round(momentum * 100) / 100,
-    total_completions: totalCompletions,
-    updated_at: now,
-  };
+    updatedStocks.push({
+      ticker: catTicker,
+      name: cat,
+      current_price: newPrice,
+      hour_change: hourChange,
+      day_change: dayChange,
+      sparkline: history.slice(-20).map((h) => h.price),
+      avg_happiness: avgHappiness,
+      total_completions: catCompletions,
+      updated_at: now,
+    });
+  }
+
+  return updatedStocks;
 }
 
 async function recalculateAllStocks(db) {
-  const results = [];
-  for (const categoryName of Object.keys(TICKERS)) {
-    const result = await recalculateStockPrice(db, categoryName);
-    if (result) results.push(result);
-  }
-  return results;
+  // Just recalculate as if a neutral event happened in the first category
+  const firstCat = Object.keys(TICKERS)[0];
+  return await recalculateStockPrice(db, firstCat, 3);
 }
 
 module.exports = {

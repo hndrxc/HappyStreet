@@ -202,19 +202,19 @@ export default function ChatView({
               className={`flex ${isMine ? "justify-end" : "justify-start"}`}
             >
               <div
-                className={`max-w-[80%] px-5 py-3 rounded-2xl ${
+                className={`max-w-[80%] rounded-2xl ${
                   isMine
                     ? "bg-accent text-text-on-accent rounded-br-md"
                     : "bg-surface border border-border text-text-primary rounded-bl-md"
                 }`}
+                style={{ padding: "16px 24px" }}
               >
-                <p className="text-[15px] leading-relaxed break-words whitespace-pre-wrap [word-break:break-word]">
+                <p style={{ fontSize: "16px", lineHeight: "1.6", wordBreak: "break-word", whiteSpace: "pre-wrap" }}>
                   {msg.text}
                 </p>
                 <p
-                  className={`text-[11px] mt-1.5 ${
-                    isMine ? "text-text-on-accent/70" : "text-text-muted"
-                  }`}
+                  style={{ fontSize: "11px", marginTop: "6px" }}
+                  className={isMine ? "text-text-on-accent/70" : "text-text-muted"}
                 >
                   {formatTime(msg.timestamp)}
                 </p>

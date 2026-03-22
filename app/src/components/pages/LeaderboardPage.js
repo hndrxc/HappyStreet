@@ -19,8 +19,14 @@ export default function LeaderboardPage() {
 
   useEffect(() => {
     fetchLeaderboard()
-      .then((result) => setData(Array.isArray(result) ? result : []))
-      .catch(() => setData([]))
+      .then((result) => {
+        console.log("[Leaderboard] fetched:", result);
+        setData(Array.isArray(result) ? result : []);
+      })
+      .catch((err) => {
+        console.error("[Leaderboard] fetch failed:", err);
+        setData([]);
+      })
       .finally(() => setLoading(false));
   }, []);
 
