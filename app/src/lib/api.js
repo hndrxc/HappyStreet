@@ -12,8 +12,9 @@ export function formatDistance(meters) {
   return `${(meters / 1000).toFixed(1)}km away`;
 }
 
-export async function fetchNearbyHotspots(lat, lon, radius = 2000) {
+export async function fetchNearbyHotspots(lat, lon, radius = 10000) {
   if (!BASE_URL) return [];
+  console.debug("[API client] GET /hotspots/nearby", { lat, lon, radius });
   const res = await fetch(
     `${BASE_URL}/hotspots/nearby?lat=${lat}&lon=${lon}&radius=${radius}`
   );
@@ -23,6 +24,7 @@ export async function fetchNearbyHotspots(lat, lon, radius = 2000) {
 
 export async function fetchHotspotById(id) {
   if (!BASE_URL) return null;
+  console.debug("[API client] GET /hotspots/:id", { id });
   const res = await fetch(`${BASE_URL}/hotspots/${id}`);
   if (!res.ok) throw new Error(`Failed to fetch hotspot: ${res.status}`);
   return res.json();
@@ -96,5 +98,40 @@ export async function authMe(token) {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) return null;
-  return res.json(); // { id, username, balance }
+  return res.json(); // { id, username, balance, joy_coins, total_completions }
+}
+
+export async function fetchMarket() {
+  if (!BASE_URL) return [];
+  const res = await fetch(`${BASE_URL}/market`);
+  if (!res.ok) throw new Error(`Failed to fetch market: ${res.status}`);
+  return res.json();
+}
+
+export async function fetchStock(ticker) {
+  if (!BASE_URL) return null;
+  const res = await fetch(`${BASE_URL}/market/${ticker}`);
+  if (!res.ok) throw new Error(`Failed to fetch stock: ${res.status}`);
+  return res.json();
+}
+
+export async function fetchLeaderboard() {
+  if (!BASE_URL) return [];
+  const res = await fetch(`${BASE_URL}/leaderboard`);
+  if (!res.ok) throw new Error(`Failed to fetch leaderboard: ${res.status}`);
+  return res.json();
+}
+
+export async function fetchUserStats(userId) {
+  if (!BASE_URL) return null;
+  const res = await fetch(`${BASE_URL}/users/${userId}/stats`);
+  if (!res.ok) throw new Error(`Failed to fetch user stats: ${res.status}`);
+  return res.json();
+}
+
+export async function fetchCategories() {
+  if (!BASE_URL) return [];
+  const res = await fetch(`${BASE_URL}/categories`);
+  if (!res.ok) throw new Error(`Failed to fetch categories: ${res.status}`);
+  return res.json();
 }

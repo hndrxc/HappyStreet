@@ -4,13 +4,20 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import { MapContainer, TileLayer, CircleMarker, Circle, useMap } from "react-leaflet";
 import useLocation from "@/lib/useLocation";
 import useSocket from "@/lib/useSocket";
-import { fetchNearbyHotspots, geoToLeaflet } from "@/lib/api";
-import { hotspots as mockHotspots, CATEGORY_COLORS } from "@/lib/mockData";
+import { fetchNearbyHotspots, geoToLeaflet, fetchHotspotById } from "@/lib/api";
 import { LocationCrosshairIcon } from "@/components/icons";
 
 // Default center: LSU campus
 const DEFAULT_CENTER = [30.4133, -91.1800];
 const DEFAULT_ZOOM = 15;
+const CATEGORY_COLORS = {
+  kindness: "#E8A020",
+  mindfulness: "#8B5CF6",
+  "social connection": "#3B82F6",
+  "physical activity": "#10B981",
+  creativity: "#F472B6",
+  gratitude: "#F59E0B",
+};
 
 function RecenterButton({ position }) {
   const map = useMap();
@@ -82,13 +89,31 @@ function MapResizeSync() {
   return null;
 }
 
-export default function HotspotMapInner({ onSelectHotspot }) {
+export default function HotspotMapInner({ onSelectHotspot, focusHotspotId }) {
   const { location, error, loading } = useLocation();
   const { socket } = useSocket();
-  const [hotspotsList, setHotspotsList] = useState(mockHotspots);
+  const [hotspotsList, setHotspotsList] = useState([]);
   const [selectedHotspot, setSelectedHotspot] = useState(null);
   const [pingHotspotId, setPingHotspotId] = useState(null);
   const lastFetchPosRef = useRef(null);
+  const focusFetchedRef = useRef(null);
+
+  // Fetch and focus a specific hotspot by ID
+  useEffect(() => {
+    if (!focusHotspotId || focusFetchedRef.current === focusHotspotId) return;
+    focusFetchedRef.current = focusHotspotId;
+
+    fetchHotspotById(focusHotspotId)
+      .then((hotspot) => {
+        if (!hotspot) return;
+        setHotspotsList((prev) => {
+          const exists = prev.some((h) => (h._id || h.id) === (hotspot._id || hotspot.id));
+          return exists ? prev.map((h) => (h._id || h.id) === (hotspot._id || hotspot.id) ? hotspot : h) : [...prev, hotspot];
+        });
+        setSelectedHotspot(hotspot);
+      })
+      .catch(() => {});
+  }, [focusHotspotId]);
 
   const userPos = location
     ? [location.lat, location.lon]
@@ -98,23 +123,46 @@ export default function HotspotMapInner({ onSelectHotspot }) {
   useEffect(() => {
     if (!location) return;
 
+    console.debug("[HotspotMap] location:update", {
+      lat: location.lat,
+      lon: location.lon,
+      accuracy: location.accuracy,
+    });
+
     const lastPos = lastFetchPosRef.current;
     if (lastPos) {
       const dist = Math.sqrt(
         Math.pow((location.lat - lastPos.lat) * 111320, 2) +
         Math.pow((location.lon - lastPos.lon) * 111320 * Math.cos(location.lat * Math.PI / 180), 2)
       );
-      if (dist < 200) return;
+      if (dist < 200) {
+        console.debug("[HotspotMap] skip fetchNearbyHotspots (movement < 200m)", {
+          movedMeters: Math.round(dist),
+        });
+        return;
+      }
     }
 
     lastFetchPosRef.current = { lat: location.lat, lon: location.lon };
 
-    fetchNearbyHotspots(location.lat, location.lon, 2000)
+    console.debug("[HotspotMap] fetchNearbyHotspots:start", {
+      lat: location.lat,
+      lon: location.lon,
+      radius: 10000,
+    });
+
+    fetchNearbyHotspots(location.lat, location.lon, 10000)
       .then((data) => {
-        if (data && data.length > 0) setHotspotsList(data);
+        console.debug("[HotspotMap] fetchNearbyHotspots:success", {
+          count: Array.isArray(data) ? data.length : 0,
+        });
+        setHotspotsList(Array.isArray(data) ? data : []);
       })
-      .catch(() => {
-        // Keep mock data as fallback
+      .catch((err) => {
+        console.debug("[HotspotMap] fetchNearbyHotspots:error", {
+          message: err?.message || "unknown",
+        });
+        setHotspotsList([]);
       });
   }, [location]);
 
@@ -153,8 +201,15 @@ export default function HotspotMapInner({ onSelectHotspot }) {
     return DEFAULT_CENTER;
   }, []);
 
-  const handleHotspotTap = (hotspot) => {
+  const handleHotspotTap = async (hotspot) => {
+    const id = hotspot._id || hotspot.id;
     setSelectedHotspot(hotspot);
+    try {
+      const full = await fetchHotspotById(id);
+      if (full) setSelectedHotspot(full);
+    } catch {
+      // Keep the local data as fallback
+    }
   };
 
   const questCount = (hotspot) => {
@@ -289,7 +344,7 @@ export default function HotspotMapInner({ onSelectHotspot }) {
               <div className="flex items-center justify-between mb-2">
                 {selectedHotspot.category_bias && (
                   <span
-                    className="text-[10px] font-medium px-2 py-0.5 rounded-full"
+                    className="text-xs font-semibold px-2 py-0.5 rounded-full capitalize"
                     style={{
                       backgroundColor: getHotspotColor(selectedHotspot) + "18",
                       color: getHotspotColor(selectedHotspot),
@@ -299,14 +354,14 @@ export default function HotspotMapInner({ onSelectHotspot }) {
                   </span>
                 )}
                 {selectedHotspot.heat_score > 0 && (
-                  <span className="text-[10px] text-text-muted">
+                  <span className="text-xs text-text-muted">
                     {selectedHotspot.heat_score} recent completions
                   </span>
                 )}
               </div>
 
               {/* Name + description */}
-              <h3 className="font-pixel text-[12px] text-text-primary mb-1">
+              <h3 className="font-heading text-base text-text-primary mb-1">
                 {selectedHotspot.name}
               </h3>
               {selectedHotspot.description && (
@@ -334,13 +389,13 @@ export default function HotspotMapInner({ onSelectHotspot }) {
                     onSelectHotspot(selectedHotspot);
                     setSelectedHotspot(null);
                   }}
-                  className="flex-1 bg-accent text-text-on-accent py-3 rounded-xl font-semibold text-sm transition-transform active:scale-[0.98]"
+                  className="flex-1 bg-accent text-text-on-accent min-h-[var(--control-height)] rounded-xl font-semibold text-sm transition-transform active:scale-[0.98]"
                 >
                   View Quests
                 </button>
                 <button
                   onClick={() => setSelectedHotspot(null)}
-                  className="px-5 py-3 rounded-xl border border-border text-text-secondary text-sm transition-colors hover:bg-base-darker"
+                  className="px-5 min-h-[var(--control-height)] rounded-xl border border-border text-text-secondary text-sm transition-colors hover:bg-base-darker"
                 >
                   Close
                 </button>

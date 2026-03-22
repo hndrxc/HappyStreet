@@ -1,100 +1,87 @@
 "use client";
 
-import { useState, useMemo } from "react";
-import { leaderboard, quests, currentUser } from "@/lib/mockData";
+import { useState, useEffect, useMemo } from "react";
+import { fetchLeaderboard } from "@/lib/api";
+import { useAuth } from "@/context/AuthContext";
 
 const SORT_OPTIONS = [
-  { id: "balance", label: "Balance" },
-  { id: "totalShares", label: "Total Shares" },
-  { id: "questShares", label: "Quest Shares" },
+  { id: "joy_coins", label: "JoyCoins" },
+  { id: "total_completions", label: "Quests Done" },
 ];
 
 export default function LeaderboardPage() {
-  const [activeTab, setActiveTab] = useState("global");
-  const [sortBy, setSortBy] = useState("balance");
-  const [selectedQuest, setSelectedQuest] = useState(quests[0]?.id || "");
+  const [data, setData] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [sortBy, setSortBy] = useState("joy_coins");
+  const { user } = useAuth();
 
-  const data = activeTab === "global" ? leaderboard.global : leaderboard.interacted;
+  useEffect(() => {
+    fetchLeaderboard()
+      .then((result) => setData(Array.isArray(result) ? result : []))
+      .catch(() => setData([]))
+      .finally(() => setLoading(false));
+  }, []);
 
   const sortedData = useMemo(() => {
     const sorted = [...data];
-    if (sortBy === "balance") {
-      sorted.sort((a, b) => b.balance - a.balance);
-    } else if (sortBy === "totalShares") {
-      sorted.sort((a, b) => b.totalShares - a.totalShares);
+    if (sortBy === "joy_coins") {
+      sorted.sort((a, b) => (b.joy_coins || 0) - (a.joy_coins || 0));
+    } else if (sortBy === "total_completions") {
+      sorted.sort((a, b) => (b.total_completions || 0) - (a.total_completions || 0));
     }
-    // For questShares, we'd need real data - for now, use totalShares as proxy
     return sorted.map((item, index) => ({ ...item, rank: index + 1 }));
   }, [data, sortBy]);
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden">
-      {/* Header */}
-      <header className="px-4 py-4 bg-surface border-b border-border">
-        <h1 className="font-pixel text-[12px] text-text-primary mb-4">Leaderboard</h1>
-        
-        {/* Tab Switcher */}
-        <div className="flex bg-base rounded-xl p-1 mb-4">
-          <button
-            onClick={() => setActiveTab("global")}
-            className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-all ${
-              activeTab === "global"
-                ? "bg-surface text-accent shadow-warm-sm"
-                : "text-text-muted"
-            }`}
-          >
-            Global
-          </button>
-          <button
-            onClick={() => setActiveTab("interacted")}
-            className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-all ${
-              activeTab === "interacted"
-                ? "bg-surface text-accent shadow-warm-sm"
-                : "text-text-muted"
-            }`}
-          >
-            Interacted
-          </button>
-        </div>
+    <div className="page-shell">
+      <header className="page-header bg-surface border-b border-border">
+        <h1 className="font-heading text-base text-text-primary mb-3">Leaderboard</h1>
 
-        {/* Sort Options */}
-        <div className="flex gap-2 items-center">
-          <span className="text-xs text-text-muted shrink-0">Sort by:</span>
-          <select
-            value={sortBy}
-            onChange={(e) => setSortBy(e.target.value)}
-            className="flex-1 px-3 py-2 bg-base rounded-lg border border-border text-sm text-text-primary focus:outline-none focus:border-accent"
-          >
-            {SORT_OPTIONS.map((opt) => (
-              <option key={opt.id} value={opt.id}>{opt.label}</option>
-            ))}
-          </select>
-          
-          {sortBy === "questShares" && (
+        <div className="card-stack-center">
+          <div className="flex gap-2 items-center">
+            <span className="text-xs text-text-muted shrink-0">Sort by:</span>
             <select
-              value={selectedQuest}
-              onChange={(e) => setSelectedQuest(e.target.value)}
-              className="flex-1 px-3 py-2 bg-base rounded-lg border border-border text-sm text-text-primary focus:outline-none focus:border-accent"
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              className="flex-1 min-h-[2.5rem] px-3 bg-base rounded-lg border border-border text-sm text-text-primary focus:outline-none focus:border-accent"
             >
-              {quests.map((q) => (
-                <option key={q.id} value={q.id}>{q.title}</option>
+              {SORT_OPTIONS.map((opt) => (
+                <option key={opt.id} value={opt.id}>{opt.label}</option>
               ))}
             </select>
-          )}
+          </div>
         </div>
       </header>
 
-      {/* Leaderboard List */}
-      <div className="flex-1 overflow-y-auto scrollbar-hide">
-        <div className="p-4 space-y-2">
-          {sortedData.map((entry) => (
-            <LeaderboardRow 
-              key={entry.userId} 
-              entry={entry}
-              sortBy={sortBy}
-              isCurrentUser={entry.userId === currentUser.id}
-            />
-          ))}
+      <div className="page-scroll scrollbar-hide">
+        <div className="page-content space-y-2">
+          {loading ? (
+            [1, 2, 3, 4, 5].map((i) => (
+              <div key={i} className="card-stack-center flex items-center gap-3 p-3 rounded-xl bg-surface border border-border animate-pulse">
+                <div className="w-8 h-8 rounded-full bg-base-darker" />
+                <div className="flex-1">
+                  <div className="h-4 w-24 bg-base-darker rounded" />
+                </div>
+                <div className="h-4 w-16 bg-base-darker rounded" />
+              </div>
+            ))
+          ) : sortedData.length === 0 ? (
+            <div className="page-center py-16">
+              <p className="text-text-muted text-sm">No users yet</p>
+              <p className="text-sm text-text-muted mt-1">Complete quests to earn JoyCoins</p>
+            </div>
+          ) : (
+            <div className="card-stack-center space-y-2">
+              {sortedData.map((entry) => (
+                <LeaderboardRow
+                  key={entry.userId}
+                  entry={entry}
+                  sortBy={sortBy}
+                  isCurrentUser={entry.userId === user?.id || entry.username === user?.username}
+                />
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -102,7 +89,7 @@ export default function LeaderboardPage() {
 }
 
 function LeaderboardRow({ entry, sortBy, isCurrentUser }) {
-  const { rank, username, balance, totalShares } = entry;
+  const { rank, username, joy_coins, total_completions } = entry;
 
   const getRankStyle = () => {
     switch (rank) {
@@ -118,38 +105,28 @@ function LeaderboardRow({ entry, sortBy, isCurrentUser }) {
   };
 
   const getValue = () => {
-    switch (sortBy) {
-      case "balance":
-        return `$${balance.toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
-      case "totalShares":
-      case "questShares":
-        return totalShares.toString();
-      default:
-        return "";
-    }
+    if (sortBy === "total_completions") return `${total_completions || 0} quests`;
+    return `${joy_coins || 0} JC`;
   };
 
   return (
-    <div 
+    <div
       className={`flex items-center gap-3 p-3 rounded-xl transition-colors ${
         isCurrentUser ? "bg-accent/10 border border-accent/30" : "bg-surface border border-border"
       }`}
     >
-      {/* Rank */}
-      <div className={`w-8 h-8 rounded-full flex items-center justify-center font-pixel text-xs ${getRankStyle()}`}>
+      <div className={`w-8 h-8 rounded-full flex items-center justify-center font-heading text-xs ${getRankStyle()}`}>
         {rank}
       </div>
-      
-      {/* Username */}
+
       <div className="flex-1 min-w-0">
         <p className={`font-medium truncate ${isCurrentUser ? "text-accent" : "text-text-primary"}`}>
           {username}
           {isCurrentUser && <span className="text-text-muted text-xs ml-2">(You)</span>}
         </p>
       </div>
-      
-      {/* Value */}
-      <div className={`font-pixel text-[10px] ${rank <= 3 ? "text-accent" : "text-text-secondary"}`}>
+
+      <div className={`font-heading text-xs ${rank <= 3 ? "text-accent" : "text-text-secondary"}`}>
         {getValue()}
       </div>
     </div>

@@ -35,16 +35,16 @@ export default function HappinessRatingModal({ quest, isOpen, onSubmit, onCancel
       />
 
       {/* Modal */}
-      <div className="fixed inset-0 z-[2001] flex items-center justify-center p-4 pointer-events-none">
+      <div className="modal-center z-[2001] pointer-events-none">
         <div
           className="bg-surface rounded-2xl p-6 shadow-warm w-full max-w-sm pointer-events-auto animate-fade-in"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
-          <h3 className="font-pixel text-[11px] text-text-primary text-center mb-2">
+          <h3 className="font-heading text-base text-text-primary text-center mb-2">
             How happy did this make you?
           </h3>
-          <p className="text-xs text-text-muted text-center mb-5 leading-relaxed line-clamp-2">
+          <p className="text-sm text-text-muted text-center mb-5 leading-relaxed line-clamp-2">
             {quest.title}
           </p>
 
@@ -61,14 +61,14 @@ export default function HappinessRatingModal({ quest, isOpen, onSubmit, onCancel
                 }`}
               >
                 <span className="text-xl sm:text-2xl leading-none mt-1.5">{r.emoji}</span>
-                <span className="text-[8px] text-text-muted">{r.label}</span>
+                <span className="text-xs text-text-muted">{r.label}</span>
               </button>
             ))}
           </div>
 
           {/* Coin reward preview */}
           <div className="text-center mb-5">
-            <span className="text-accent font-semibold text-sm">
+            <span className="text-accent font-semibold text-base">
               +{quest.coin_reward || 0} JoyCoins
             </span>
           </div>

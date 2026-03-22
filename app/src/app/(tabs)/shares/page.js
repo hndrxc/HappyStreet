@@ -1,5 +1,5 @@
-import SharesPage from "@/components/pages/SharesPage";
+import MarketDashboard from "@/components/MarketDashboard";
 
 export default function SharesRoutePage() {
-  return <SharesPage />;
+  return <MarketDashboard />;
 }

@@ -264,36 +264,6 @@ async function ensureSeedData() {
     );
   }
 
-  // Seed stocks collection
-  const { TICKERS } = require("./market/pricing");
-  const stockCount = await db.collection("stocks").countDocuments();
-  if (stockCount === 0) {
-    const stockDocs = Object.entries(TICKERS).map(([name, ticker]) => ({
-      name,
-      ticker,
-      current_price: 100,
-      price_history: [{ price: 100, timestamp: now }],
-      total_completions: 0,
-      avg_happiness: 3.0,
-      hour_change: 0,
-      day_change: 0,
-      updated_at: now,
-    }));
-    await db.collection("stocks").insertMany(stockDocs);
-  }
-
-  // Backfill happiness fields on categories
-  await categories.updateMany(
-    { totalHappinessScore: { $exists: false } },
-    { $set: { totalHappinessScore: 0, avgHappiness: 0, lastUpdated: new Date() } }
-  );
-
-  // Backfill user fields for currency/stats
-  await db.collection("userTable").updateMany(
-    { joy_coins: { $exists: false } },
-    { $set: { joy_coins: 0, total_completions: 0, streak_current: 0, streak_last_date: null } }
-  );
-
   // Geospatial index for /quests/nearby — idempotent, null locations auto-excluded.
   await quests.createIndex({ location: "2dsphere" });
 
@@ -317,90 +287,6 @@ async function ensureSeedData() {
     { $set: { questq_ids: [] } }
   );
   await hotspots.createIndex({ location: "2dsphere" });
-
-  // Seed default hotspots if empty
-  const hotspotCount = await hotspots.countDocuments();
-  if (hotspotCount === 0) {
-    const defaultHotspots = [
-      { name: "Middleton Library", description: "A quiet study spot on campus", lat: 30.4133, lon: -91.1800, radius_meters: 300, category_bias: "mindfulness" },
-      { name: "LSU Quad", description: "The heart of campus life", lat: 30.4155, lon: -91.1780, radius_meters: 400, category_bias: "social connection" },
-      { name: "Student Union", description: "Where everyone gathers between classes", lat: 30.4148, lon: -91.1768, radius_meters: 250, category_bias: "social connection" },
-      { name: "Highland Coffees", description: "Local coffee shop near the north gates", lat: 30.4103, lon: -91.1780, radius_meters: 150, category_bias: "kindness" },
-      { name: "Parade Ground", description: "Open field perfect for outdoor activities", lat: 30.4160, lon: -91.1810, radius_meters: 350, category_bias: "physical activity" },
-      { name: "Tiger Stadium", description: "Death Valley — home of LSU football", lat: 30.4120, lon: -91.1840, radius_meters: 500, category_bias: "social connection" },
-      { name: "PMAC", description: "Pete Maravich Assembly Center", lat: 30.4100, lon: -91.1850, radius_meters: 200, category_bias: "physical activity" },
-      { name: "Free Speech Alley", description: "A place for open expression and creativity", lat: 30.4150, lon: -91.1770, radius_meters: 100, category_bias: "creativity" },
-      { name: "The Quad at South", description: "Southern campus green space", lat: 30.4090, lon: -91.1760, radius_meters: 300, category_bias: "gratitude" },
-      { name: "Nick's Cafe", description: "Classic campus diner", lat: 30.4085, lon: -91.1785, radius_meters: 150, category_bias: "kindness" },
-    ];
-
-    await hotspots.insertMany(
-      defaultHotspots.map((h) => ({
-        name: h.name,
-        description: h.description,
-        location: { type: "Point", coordinates: [h.lon, h.lat] },
-        radius_meters: h.radius_meters,
-        quest_ids: [],
-        questq_ids: [],
-        category_bias: h.category_bias,
-        heat_score: 0,
-        active: true,
-        created_at: now,
-      }))
-    );
-    console.log(`Seeded ${defaultHotspots.length} default hotspots`);
-  }
-
-  // Distribute quests across hotspots if quests are unanchored
-  const unanchoredCount = await quests.countDocuments({ location: null, active: true });
-  const totalQuestCount = await quests.countDocuments({ active: true });
-  if (unanchoredCount === totalQuestCount && totalQuestCount > 0) {
-    const allHotspotDocs = await hotspots.find().toArray();
-    if (allHotspotDocs.length > 0) {
-      const allQuestDocs = await quests.find({ active: true }).toArray();
-      const globalCount = Math.max(1, Math.floor(allQuestDocs.length * 0.1));
-      const toAssign = allQuestDocs.slice(globalCount); // first globalCount stay global
-
-      const questOps = [];
-      const hotspotQuestMap = new Map(); // hotspot _id -> quest _id[]
-
-      for (let i = 0; i < toAssign.length; i++) {
-        const hotspot = allHotspotDocs[i % allHotspotDocs.length];
-        const questDoc = toAssign[i];
-
-        questOps.push({
-          updateOne: {
-            filter: { _id: questDoc._id },
-            update: {
-              $set: {
-                hotspot_id: hotspot._id,
-                location: hotspot.location,
-              },
-            },
-          },
-        });
-
-        const hid = hotspot._id.toString();
-        if (!hotspotQuestMap.has(hid)) hotspotQuestMap.set(hid, []);
-        hotspotQuestMap.get(hid).push(questDoc._id);
-      }
-
-      if (questOps.length > 0) await quests.bulkWrite(questOps);
-
-      const hotspotOps = [];
-      for (const [hid, questIds] of hotspotQuestMap) {
-        hotspotOps.push({
-          updateOne: {
-            filter: { _id: new ObjectId(hid) },
-            update: { $set: { quest_ids: questIds } },
-          },
-        });
-      }
-      if (hotspotOps.length > 0) await hotspots.bulkWrite(hotspotOps);
-
-      console.log(`Distributed ${toAssign.length} quests across ${allHotspotDocs.length} hotspots (${globalCount} kept global)`);
-    }
-  }
 }
 
 async function connect(uri) {
@@ -440,8 +326,7 @@ async function createQuest(title, value = 100, category = DEFAULT_CATEGORY, extr
   return normalizeQuest(doc);
 }
 
-async function completeQuest(questId, options = {}) {
-  const { happinessRating, userId, hotspotId } = options;
+async function completeQuest(questId) {
   let oid;
   try {
     oid = new ObjectId(questId);
@@ -483,89 +368,23 @@ async function completeQuest(questId, options = {}) {
 
   const completedCategory = normalizeCategory(doc.category) || DEFAULT_CATEGORY;
   const meta = CATEGORY_MAP[completedCategory];
-  const rating = Number.isFinite(happinessRating) ? Math.max(1, Math.min(5, happinessRating)) : null;
-
-  // Update category with happiness data
-  const categoryUpdate = {
-    $inc: { totalCompletions: 1 },
-    $set: { updatedAt: new Date() },
-    $setOnInsert: {
-      name: completedCategory,
-      displayName: meta ? meta.displayName : completedCategory,
-      price: 100,
-      totalCompletions: 0,
-      totalHappinessScore: 0,
-      avgHappiness: 0,
-      createdAt: new Date(),
-    },
-  };
-  if (rating) {
-    categoryUpdate.$inc.totalHappinessScore = rating;
-  }
   await db.collection("categories").updateOne(
     { name: completedCategory },
-    categoryUpdate,
+    {
+      $inc: { totalCompletions: 1 },
+      $set: { updatedAt: new Date() },
+      $setOnInsert: {
+        name: completedCategory,
+        displayName: meta ? meta.displayName : completedCategory,
+        price: 100,
+        totalCompletions: 0,
+        createdAt: new Date(),
+      },
+    },
     { upsert: true }
   );
 
-  // Recompute avgHappiness from the updated totals
-  if (rating) {
-    const catDoc = await db.collection("categories").findOne({ name: completedCategory });
-    if (catDoc && catDoc.totalCompletions > 0) {
-      const avg = (catDoc.totalHappinessScore || 0) / catDoc.totalCompletions;
-      await db.collection("categories").updateOne(
-        { _id: catDoc._id },
-        { $set: { avgHappiness: Math.round(avg * 100) / 100 } }
-      );
-    }
-  }
-
-  const normalizedQuest = normalizeQuest(doc);
-  const coinReward = normalizedQuest.coin_reward || 0;
-
-  // Record the completion
-  if (rating) {
-    await recordCompletion({
-      questId: oid.toString(),
-      userId: userId || "anonymous",
-      category: completedCategory,
-      happinessRating: rating,
-      coinReward,
-      hotspotId: hotspotId || normalizedQuest.hotspot_id || null,
-    });
-  }
-
-  // Award JoyCoins to user
-  if (userId && userId !== "anonymous" && coinReward > 0) {
-    try {
-      const userOid = ObjectId.isValid(userId) ? new ObjectId(userId) : null;
-      if (userOid) {
-        await db.collection("userTable").updateOne(
-          { _id: userOid },
-          {
-            $inc: { joy_coins: coinReward, total_completions: 1 },
-            $set: { streak_last_date: new Date() },
-          }
-        );
-      }
-    } catch { /* user not found is non-fatal */ }
-  }
-
-  return normalizedQuest;
-}
-
-async function recordCompletion({ questId, userId, category, happinessRating, coinReward, hotspotId }) {
-  const doc = {
-    quest_id: questId,
-    user_id: userId || "anonymous",
-    category,
-    happiness_rating: happinessRating,
-    coin_reward: coinReward || 0,
-    hotspot_id: hotspotId || null,
-    completed_at: new Date(),
-  };
-  await db.collection("completions").insertOne(doc);
-  return doc;
+  return normalizeQuest(doc);
 }
 
 // --- Nearby Quests (geo-aware) ---
@@ -766,29 +585,19 @@ async function getHotspotById(id) {
   return normalizeHotspot(doc);
 }
 
-async function createHotspot(name, lat, lon, optionsOrRadius = {}) {
-  const options =
-    typeof optionsOrRadius === "number"
-      ? { radius: optionsOrRadius }
-      : (optionsOrRadius || {});
+async function createHotspot(name, lat, lon, radius = 80) {
   const hotspots = db.collection("hotspotTable");
   const latest = await hotspots.find({ id: { $type: "number" } }).sort({ id: -1 }).limit(1).toArray();
   const nextId = latest.length > 0 ? latest[0].id + 1 : 0;
 
-  const radiusMeters = options.radius_meters || options.radius || 80;
   const result = await hotspots.insertOne({
     id: nextId,
     name,
-    description: options.description || "",
-    location: { type: "Point", coordinates: [lon, lat] },
-    radius_meters: radiusMeters,
-    radius: radiusMeters,
-    quest_ids: [],
+    lat,
+    lon,
+    radius,
     questq_ids: [],
-    category_bias: options.category_bias || null,
-    heat_score: 0,
-    active: true,
-    created_at: new Date(),
+    location: { type: "Point", coordinates: [lon, lat] },
   });
   const doc = await hotspots.findOne({ _id: result.insertedId });
   return normalizeHotspot(doc);
@@ -815,98 +624,25 @@ async function updateTunnelStatus(tunnelId, status, extra = {}) {
     { returnDocument: "after" }
   );
 }
-async function deleteTunnel(tunnelId) {
-  return await db.collection("tunnelTable").deleteOne({ _id: new ObjectId(tunnelId) });
-}
 
 async function getNearbyHotspots(lat, lon, radius = 10000) {
-  const hotspots = db.collection("hotspotTable");
+  const hotspots = await db.collection("hotspotTable").find().toArray();
+  const normalized = hotspots.map(normalizeHotspot).filter(Boolean);
 
-  try {
-    const docs = await hotspots.aggregate([
-      {
-        $geoNear: {
-          near: { type: "Point", coordinates: [lon, lat] },
-          distanceField: "distance_meters",
-          maxDistance: radius,
-          spherical: true,
-        },
-      },
-    ]).toArray();
-
-    return docs.map((doc) => ({
-      ...normalizeHotspot(doc),
-      distance_meters: Math.round(doc.distance_meters),
-    }));
-  } catch (err) {
-    // Fallback to in-memory filter if $geoNear fails (e.g. missing index or no geo docs)
-    console.error("$geoNear hotspot query failed, falling back to in-memory:", err.message);
-    const allDocs = await hotspots.find().toArray();
-    return allDocs
-      .map(normalizeHotspot)
-      .filter(Boolean)
-      .map((h) => {
-        if (!Number.isFinite(h.lat) || !Number.isFinite(h.lon)) return null;
-        const distance = haversineMeters(lat, lon, h.lat, h.lon);
-        if (distance > radius) return null;
-        return { ...h, distance_meters: Math.round(distance) };
-      })
-      .filter(Boolean)
-      .sort((a, b) => a.distance_meters - b.distance_meters);
-  }
-}
-
-async function removeRecipientFromQueue(questId, userId) {
-  if (!questId || !userId) return;
-  const questIdText = String(questId);
-  const userIdText = String(userId);
-  const hotspots = db.collection("hotspotTable");
-
-  await hotspots.updateMany(
-    { "questq_ids.quest_id": questIdText },
-    { $pull: { "questq_ids.$[entry].recipient_ids": userIdText } },
-    { arrayFilters: [{ "entry.quest_id": questIdText }] }
-  );
-
-  await hotspots.updateMany(
-    { "questq_ids": { $elemMatch: { quest_id: questIdText, recipient_ids: { $size: 0 } } } },
-    { $pull: { questq_ids: { quest_id: questIdText, recipient_ids: { $size: 0 } } } }
-  );
-}
-
-async function joinQuestQueue(hotspotId, questId, userId) {
-  const hotspot = await getHotspotById(hotspotId);
-  if (!hotspot || !questId || !userId) return null;
-
-  const hotspots = db.collection("hotspotTable");
-  const targetId = ObjectId.isValid(String(hotspot._id))
-    ? new ObjectId(String(hotspot._id))
-    : hotspot._id;
-
-  const queueEntries = Array.isArray(hotspot.questq_ids) ? hotspot.questq_ids : [];
-  const matchedEntry = queueEntries.find((entry) => String(entry?.quest_id) === String(questId));
-
-  if (matchedEntry) {
-    await hotspots.updateOne(
-      { _id: targetId },
-      { $addToSet: { "questq_ids.$[q].recipient_ids": String(userId) } },
-      { arrayFilters: [{ "q.quest_id": matchedEntry.quest_id }] }
-    );
-  } else {
-    await hotspots.updateOne(
-      { _id: targetId },
-      {
-        $push: {
-          questq_ids: {
-            quest_id: String(questId),
-            recipient_ids: [String(userId)],
-          },
-        },
+  return normalized
+    .map((hotspot) => {
+      if (!Number.isFinite(hotspot.lat) || !Number.isFinite(hotspot.lon)) {
+        return null;
       }
-    );
-  }
-
-  return await getHotspotById(hotspot._id);
+      const distance = haversineMeters(lat, lon, hotspot.lat, hotspot.lon);
+      if (distance > radius) return null;
+      return {
+        ...hotspot,
+        distance_meters: Math.round(distance),
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.distance_meters - b.distance_meters);
 }
 
 async function acquireQuestRecipientForCompletion(questId, requestedRecipientId) {
@@ -987,80 +723,13 @@ async function requeueQuestRecipient(hotspotId, questKey, recipientId) {
   );
 }
 
-// --- Market / Leaderboard / Stats ---
-function getDb() { return db; }
-
-async function getAllStocks() {
-  return await db.collection("stocks").find().toArray();
-}
-
-async function getStockByTicker(ticker) {
-  return await db.collection("stocks").findOne({ ticker: ticker.toUpperCase() });
-}
-
-async function getCategories() {
-  return await db.collection("categories").find().toArray();
-}
-
-async function getLeaderboard(limit = 20) {
-  const docs = await db.collection("userTable")
-    .find({})
-    .sort({ joy_coins: -1 })
-    .limit(limit)
-    .project({ pword_hash: 0 })
-    .toArray();
-  return docs.map((doc, i) => ({
-    rank: i + 1,
-    userId: doc._id.toString(),
-    username: doc.username,
-    joy_coins: doc.joy_coins || 0,
-    total_completions: doc.total_completions || 0,
-  }));
-}
-
-async function getUserStats(userId) {
-  let doc = null;
-  if (ObjectId.isValid(userId)) {
-    doc = await db.collection("userTable").findOne(
-      { _id: new ObjectId(userId) },
-      { projection: { pword_hash: 0 } }
-    );
-  }
-  if (!doc) {
-    doc = await db.collection("userTable").findOne(
-      { username: userId },
-      { projection: { pword_hash: 0 } }
-    );
-  }
-  if (!doc) return null;
-
-  const recentCompletions = await db.collection("completions")
-    .find({ user_id: doc._id.toString() })
-    .sort({ completed_at: -1 })
-    .limit(10)
-    .toArray();
-
-  return {
-    userId: doc._id.toString(),
-    username: doc.username,
-    joy_coins: doc.joy_coins || 0,
-    total_completions: doc.total_completions || 0,
-    streak_current: doc.streak_current || 0,
-    recent_completions: recentCompletions,
-  };
-}
-
 module.exports = {
   DEFAULT_CATEGORY,
   isValidCategory,
   connect,
-  collection: (name) => db.collection(name),
-  getDb,
-  getQuests, createQuest, completeQuest, recordCompletion, getNearbyQuests,
+  getQuests, createQuest, completeQuest, getNearbyQuests,
   getUser, getUserByUsername, createUser, updateUserLocation, updateUserBalance,
-  getHotspots, createHotspot, getHotspotById, getNearbyHotspots, removeRecipientFromQueue,
-  joinQuestQueue,
+  getHotspots, createHotspot, getHotspotById, getNearbyHotspots,
   acquireQuestRecipientForCompletion, requeueQuestRecipient,
-  getTunnel, createTunnel, updateTunnelStatus, deleteTunnel,
-  getAllStocks, getStockByTicker, getCategories, getLeaderboard, getUserStats,
+  getTunnel, createTunnel, updateTunnelStatus,
 };

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { conversations, chatMessages, currentUser } from "@/lib/mockData";
-import { LockIcon, ArrowLeftIcon } from "@/components/icons";
+import { LockIcon } from "@/components/icons";
 import ChatView from "@/components/ChatView";
 
 export default function MessagesPage() {
@@ -29,53 +29,54 @@ export default function MessagesPage() {
   }
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden">
-      {/* Header */}
-      <header className="px-4 py-4 bg-surface border-b border-border">
-        <h1 className="font-pixel text-[12px] text-text-primary mb-4">Messages</h1>
-        
-        {/* Tab Switcher */}
-        <div className="flex bg-base rounded-xl p-1">
-          <button
-            onClick={() => setActiveSection("needs")}
-            className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-all ${
-              activeSection === "needs"
-                ? "bg-surface text-accent shadow-warm-sm"
-                : "text-text-muted"
-            }`}
-          >
-            Needs
-          </button>
-          <button
-            onClick={() => setActiveSection("fulfillments")}
-            className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-all ${
-              activeSection === "fulfillments"
-                ? "bg-surface text-accent shadow-warm-sm"
-                : "text-text-muted"
-            }`}
-          >
-            Fulfillments
-          </button>
+    <div className="page-shell">
+      <header className="page-header bg-surface border-b border-border">
+        <h1 className="font-heading text-base text-text-primary mb-3">Messages</h1>
+
+        <div className="card-stack-center">
+          <div className="flex bg-base rounded-xl p-1">
+            <button
+              onClick={() => setActiveSection("needs")}
+              className={`flex-1 min-h-[2.5rem] px-4 rounded-lg text-sm font-medium transition-all ${
+                activeSection === "needs"
+                  ? "bg-surface text-accent shadow-warm-sm"
+                  : "text-text-muted"
+              }`}
+            >
+              Needs
+            </button>
+            <button
+              onClick={() => setActiveSection("fulfillments")}
+              className={`flex-1 min-h-[2.5rem] px-4 rounded-lg text-sm font-medium transition-all ${
+                activeSection === "fulfillments"
+                  ? "bg-surface text-accent shadow-warm-sm"
+                  : "text-text-muted"
+              }`}
+            >
+              Fulfillments
+            </button>
+          </div>
         </div>
       </header>
 
-      {/* Conversation List */}
-      <div className="flex-1 overflow-y-auto scrollbar-hide">
-        {currentConversations.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-center px-6">
-            <p className="text-text-muted">No conversations yet</p>
-          </div>
-        ) : (
-          <div className="divide-y divide-border">
-            {currentConversations.map((conv) => (
-              <ConversationItem
-                key={conv.id}
-                conversation={conv}
-                onClick={() => setSelectedConversation(conv)}
-              />
-            ))}
-          </div>
-        )}
+      <div className="page-scroll scrollbar-hide">
+        <div className="page-content">
+          {currentConversations.length === 0 ? (
+            <div className="page-center">
+              <p className="text-text-muted text-sm">No conversations yet</p>
+            </div>
+          ) : (
+            <div className="card-stack-center divide-y divide-border rounded-2xl border border-border bg-surface overflow-hidden">
+              {currentConversations.map((conv) => (
+                <ConversationItem
+                  key={conv.id}
+                  conversation={conv}
+                  onClick={() => setSelectedConversation(conv)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -83,17 +84,17 @@ export default function MessagesPage() {
 
 function ConversationItem({ conversation, onClick }) {
   const { questTitle, otherUser, lastMessage, timestamp, isLocked } = conversation;
-  
+
   const formatTime = (date) => {
     const now = new Date();
     const diff = now - date;
     const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-    
+
     if (days > 0) return `${days}d ago`;
-    
+
     const hours = Math.floor(diff / (1000 * 60 * 60));
     if (hours > 0) return `${hours}h ago`;
-    
+
     const mins = Math.floor(diff / (1000 * 60));
     return `${mins}m ago`;
   };
@@ -103,12 +104,10 @@ function ConversationItem({ conversation, onClick }) {
       onClick={onClick}
       className="w-full p-4 flex items-start gap-3 hover:bg-base-darker transition-colors text-left"
     >
-      {/* Avatar */}
       <div className="w-12 h-12 rounded-full bg-accent flex items-center justify-center text-text-on-accent font-semibold text-lg shrink-0">
         {otherUser.username.charAt(0).toUpperCase()}
       </div>
-      
-      {/* Content */}
+
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between mb-1">
           <span className="font-semibold text-text-primary truncate">
