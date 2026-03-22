@@ -411,7 +411,7 @@ async function getHotspotById(id){
 }
 
 async function createHotspot(name, lat, lon, radius = 80) {
-  const result = await db.collection("hotspotTable").insertOne({ name, lat, lon, radius, questq_ids: [] });
+  const result = await db.collection("hotspotTable").insertOne({ name, lat, lon, radius, radius_meters: radius, location: { type: "Point", coordinates: [lon, lat] }, questq_ids: [] });
   return await db.collection("hotspotTable").findOne({ _id: result.insertedId });
 }
 
@@ -466,6 +466,7 @@ module.exports = {
   DEFAULT_CATEGORY,
   isValidCategory,
   connect,
+  collection: (name) => db.collection(name),
   getQuests, createQuest, completeQuest, getNearbyQuests,
   getUser, getUserByUsername, createUser, updateUserLocation, updateUserBalance,
   getHotspots, createHotspot, getHotspotById, getNearbyHotspots, removeRecipientFromQueue,

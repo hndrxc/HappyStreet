@@ -35,7 +35,7 @@ const handleClaim = useCallback((quest) => {
   if (!socket || !user) return;
   socket.emit("join_quest", {
     questId: quest.quest_id,
-    userId: user._id,
+    userId: user.id,
     hotspotId: hotspot.id || hotspot._id,
   });
 }, [socket, hotspot, user]);

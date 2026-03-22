@@ -158,7 +158,7 @@ export default function HotspotMapInner({ onSelectHotspot }) {
   };
 
   const questCount = (hotspot) => {
-    return hotspot.quest_ids?.length || 0;
+    return hotspot.questq_ids?.length || 0;
   };
 
   return (

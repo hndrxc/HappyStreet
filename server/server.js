@@ -3,6 +3,7 @@ const http = require("http");
 const { Server } = require("socket.io");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const { ObjectId } = require("mongodb");
 const db = require("./db");
 
 const PORT = process.env.PORT || 3001;
@@ -378,11 +379,11 @@ socket.on("complete_quest", async ({ questId, userId }) => {
 
     // Emit hotspot_updated with post-mutation state
     for (const hotspot of affectedHotspots) {
-      const updated = await db.getHotspotById(hotspot._id);
+      const updatedHotspot = await db.getHotspotById(hotspot._id);
       io.emit("hotspot_updated", {
         hotspot_id: hotspot._id,
         name: hotspot.name,
-        questq_ids: updated.questq_ids
+        questq_ids: updatedHotspot.questq_ids
       });
     }
 

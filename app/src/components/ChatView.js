@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ArrowLeftIcon, SendIcon, LockIcon, CheckIcon } from "./icons";
 
 export default function ChatView({ 
@@ -131,7 +131,7 @@ function ConfirmDoneModal({ onConfirm, onCancel }) {
   const [canConfirm, setCanConfirm] = useState(false);
 
   // Enable confirm button after 1 second
-  useState(() => {
+  useEffect(() => {
     const timer = setTimeout(() => setCanConfirm(true), 1000);
     return () => clearTimeout(timer);
   }, []);

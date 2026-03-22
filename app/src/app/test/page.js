@@ -53,7 +53,7 @@ export default function TestPage() {
 
   function handleCompleteQuest(id) {
     if (!socketRef.current) return;
-    socketRef.current.emit("complete_quest", id);
+    socketRef.current.emit("complete_quest", { questId: id });
     addLog(`SOCKET emit complete_quest (${id})`);
   }
 

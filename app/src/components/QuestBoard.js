@@ -47,7 +47,7 @@ export default function QuestBoard() {
   }, [serverUrl]);
 
   function completeQuest(id) {
-    socketRef.current?.emit("complete_quest", id);
+    socketRef.current?.emit("complete_quest", { questId: id });
   }
 
   function addQuest(e) {
