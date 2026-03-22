@@ -264,7 +264,7 @@ socket.on("complete_quest", async ({ questId, userId }) => {
       });
     }
 
-    io.emit("quests_updated", await db.getQuests());
+    
     io.emit("quest_completed", { quest: updated, by: userId });
 
   } catch (err) {

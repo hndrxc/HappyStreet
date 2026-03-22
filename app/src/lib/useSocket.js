@@ -23,22 +23,56 @@ export default function useSocket() {
   useEffect(() => {
     const socket = getSocket();
     if (!socket) return;
-
     socketRef.current = socket;
     refCount++;
 
     const onConnect = () => setConnected(true);
     const onDisconnect = () => setConnected(false);
+    const onQuestsInit = (quests) => {
+      // TODO: store initial quest list
+    };
+    const onHotspotsInit = (hotspots) => {
+      // TODO: render hotspots on map
+    };
+    const onHotspotUpdated = ({ hotspot_id, name, questq_ids }) => {
+      // TODO: update hotspot queue in real time
+    };
+    const onQuestCompleted = ({ quest, by }) => {
+      console.log(`${by} just completed: ${quest.title}`);
+    };
 
     socket.on("connect", onConnect);
     socket.on("disconnect", onDisconnect);
+    socket.on("quests_init", onQuestsInit);
+    socket.on("hotspots_init", onHotspotsInit);
+    socket.on("hotspot_updated", onHotspotUpdated);
+    socket.on("quest_completed", onQuestCompleted);
+    
 
+  
     // Sync initial state
     setConnected(socket.connected);
+
+    
+    let watchId;
+    if (navigator.geolocation) {
+      watchId = navigator.geolocation.watchPosition((pos) => {
+        socket.emit("update_location", {
+          lat: pos.coords.latitude,
+          lon: pos.coords.longitude
+        });
+      });
+    }
+
 
     return () => {
       socket.off("connect", onConnect);
       socket.off("disconnect", onDisconnect);
+      socket.off("quests_init", onQuestsInit);
+      socket.off("hotspots_init", onHotspotsInit);
+      socket.off("hotspot_updated", onHotspotUpdated);
+      socket.off("quest_completed", onQuestCompleted);
+      if (watchId) navigator.geolocation.clearWatch(watchId);
       refCount--;
 
       if (refCount <= 0) {
