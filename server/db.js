@@ -303,6 +303,9 @@ async function ensureSeedData() {
   // Geospatial index for /quests/nearby — idempotent, null locations auto-excluded.
   await quests.createIndex({ location: "2dsphere" });
 
+  // Index for stock price calculation queries on completions
+  await db.collection("completions").createIndex({ category: 1, completed_at: -1 });
+
   const hotspots = db.collection("hotspotTable");
   await hotspots.updateMany(
     {
@@ -547,16 +550,14 @@ async function completeQuest(questId, options = {}) {
   const coinReward = normalizedQuest.coin_reward || 0;
 
   // Record the completion
-  if (rating) {
-    await recordCompletion({
-      questId: oid.toString(),
-      userId: userId || "anonymous",
-      category: completedCategory,
-      happinessRating: rating,
-      coinReward,
-      hotspotId: hotspotId || normalizedQuest.hotspot_id || null,
-    });
-  }
+  await recordCompletion({
+    questId: oid.toString(),
+    userId: userId || "anonymous",
+    category: completedCategory,
+    happinessRating: rating,
+    coinReward,
+    hotspotId: hotspotId || normalizedQuest.hotspot_id || null,
+  });
 
   // Award JoyCoins to user
   if (userId && userId !== "anonymous" && coinReward > 0) {
@@ -577,14 +578,17 @@ async function completeQuest(questId, options = {}) {
   return normalizedQuest;
 }
 
-async function recordCompletion({ questId, userId, category, happinessRating, coinReward, hotspotId }) {
+async function recordCompletion({ questId, userId, category, happinessRating, coinReward, hotspotId, lat, lon }) {
   const doc = {
     quest_id: questId,
     user_id: userId || "anonymous",
     category,
-    happiness_rating: happinessRating,
+    happiness_rating: happinessRating ?? null,
     coin_reward: coinReward || 0,
     hotspot_id: hotspotId || null,
+    location: (Number.isFinite(lat) && Number.isFinite(lon))
+      ? { type: "Point", coordinates: [lon, lat] }
+      : null,
     completed_at: new Date(),
   };
   await db.collection("completions").insertOne(doc);

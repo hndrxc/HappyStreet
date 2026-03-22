@@ -172,7 +172,7 @@ export default function MarketDashboard() {
 
 function StockCard({ stock, flash, onTap }) {
   const { ticker, name, current_price, hour_change, sparkline, price_history } = stock;
-  const color = CATEGORY_COLORS[name] || "#8B5CF6";
+  const color = CATEGORY_COLORS[name?.toLowerCase()] || "#8B5CF6";
   const change = hour_change || 0;
   const isUp = change >= 0;
 
@@ -232,7 +232,7 @@ function StockCard({ stock, flash, onTap }) {
 function StockDetailModal({ stock, onClose }) {
   const { ticker, name, current_price, hour_change, day_change, price_history, avg_happiness, total_completions } =
     stock;
-  const color = CATEGORY_COLORS[name] || "#8B5CF6";
+  const color = CATEGORY_COLORS[name?.toLowerCase()] || "#8B5CF6";
 
   const chartData = (price_history || []).map((h, i) => ({
     i,
