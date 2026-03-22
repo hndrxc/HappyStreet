@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { CloseIcon } from "./icons";
 import { createQuest } from "@/lib/api";
+import { CATEGORY_COLORS } from "@/lib/mockData";
 
 const CATEGORIES = [
   "kindness",
@@ -12,15 +13,6 @@ const CATEGORIES = [
   "creativity",
   "gratitude",
 ];
-
-const CATEGORY_COLORS = {
-  kindness: "#E8A020",
-  mindfulness: "#8B5CF6",
-  "social connection": "#3B82F6",
-  "physical activity": "#10B981",
-  creativity: "#F472B6",
-  gratitude: "#F59E0B",
-};
 
 export default function PostNeedSheet({ isOpen, onClose }) {
   const [title, setTitle] = useState("");

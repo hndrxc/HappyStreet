@@ -1,23 +1,19 @@
 "use client";
+"use no memo";
 
 import { useEffect, useState, useRef, useCallback } from "react";
 import { MapContainer, TileLayer, CircleMarker, Circle, useMap } from "react-leaflet";
 import useLocation from "@/lib/useLocation";
 import useSocket from "@/lib/useSocket";
+import { useAuth } from "@/context/AuthContext";
 import { fetchNearbyHotspots, geoToLeaflet, fetchHotspotById } from "@/lib/api";
 import { LocationCrosshairIcon } from "@/components/icons";
+
+import { CATEGORY_COLORS } from "@/lib/mockData";
 
 // Default center: LSU campus
 const DEFAULT_CENTER = [30.4133, -91.1800];
 const DEFAULT_ZOOM = 15;
-const CATEGORY_COLORS = {
-  kindness: "#E8A020",
-  mindfulness: "#8B5CF6",
-  "social connection": "#3B82F6",
-  "physical activity": "#10B981",
-  creativity: "#F472B6",
-  gratitude: "#F59E0B",
-};
 
 function RecenterButton({ position }) {
   const map = useMap();
@@ -91,7 +87,8 @@ function MapResizeSync() {
 
 export default function HotspotMapInner({ onSelectHotspot, focusHotspotId }) {
   const { location, error, loading } = useLocation();
-  const { socket } = useSocket();
+  const { user } = useAuth();
+  const { socket } = useSocket(user);
   const [hotspotsList, setHotspotsList] = useState([]);
   const [selectedHotspot, setSelectedHotspot] = useState(null);
   const [pingHotspotId, setPingHotspotId] = useState(null);
@@ -171,14 +168,14 @@ export default function HotspotMapInner({ onSelectHotspot, focusHotspotId }) {
     if (!socket) return;
 
     const onHotspotUpdated = (data) => {
-  setHotspotsList((prev) =>
-    prev.map((h) =>
-      (h.id === data.hotspot_id || h._id === data.hotspot_id)
-        ? { ...h, questq_ids: data.questq_ids }
-        : h
-    )
-  );
-};
+      setHotspotsList((prev) =>
+        prev.map((h) =>
+          (h.id === data.hotspot_id || h._id === data.hotspot_id)
+            ? { ...h, ...data }
+            : h
+        )
+      );
+    };
 
     socket.on("hotspot_updated", onHotspotUpdated);
     return () => socket.off("hotspot_updated", onHotspotUpdated);
@@ -213,7 +210,7 @@ export default function HotspotMapInner({ onSelectHotspot, focusHotspotId }) {
   };
 
   const questCount = (hotspot) => {
-    return hotspot.questq_ids?.length || 0;
+    return hotspot.quest_ids?.length || 0;
   };
 
   return (

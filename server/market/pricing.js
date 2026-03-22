@@ -108,19 +108,9 @@ async function recalculateAllStocks(db) {
   return results;
 }
 
-async function getAllStocks(db) {
-  return await db.collection("stocks").find().toArray();
-}
-
-async function getStockByTicker(db, ticker) {
-  return await db.collection("stocks").findOne({ ticker: ticker.toUpperCase() });
-}
-
 module.exports = {
   TICKERS,
   TICKER_TO_CATEGORY,
   recalculateStockPrice,
   recalculateAllStocks,
-  getAllStocks,
-  getStockByTicker,
 };
