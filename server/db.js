@@ -88,7 +88,18 @@ function normalizeHotspot(doc) {
     ? doc.lon
     : (Array.isArray(doc.location?.coordinates) ? doc.location.coordinates[0] : null);
 
-  const questqIds = Array.isArray(doc.questq_ids) ? doc.questq_ids : [];
+  const rawQuestqIds = Array.isArray(doc.questq_ids) ? doc.questq_ids : [];
+  // Normalize recipient_ids: convert plain strings to { userId, description } objects
+  const questqIds = rawQuestqIds.map((entry) => {
+    if (!entry || typeof entry !== "object") return entry;
+    const recipientIds = Array.isArray(entry.recipient_ids) ? entry.recipient_ids : [];
+    return {
+      ...entry,
+      recipient_ids: recipientIds.map((r) =>
+        typeof r === "string" ? { userId: r, description: "" } : r
+      ),
+    };
+  });
   const legacyQuestIds = Array.isArray(doc.quest_ids) ? doc.quest_ids : [];
   const questIds = Array.from(
     new Set(
@@ -909,7 +920,7 @@ async function removeRecipientFromQueue(questId, userId) {
   );
 }
 
-async function joinQuestQueue(hotspotId, questId, userId) {
+async function joinQuestQueue(hotspotId, questId, userId, description = "") {
   const hotspot = await getHotspotById(hotspotId);
   if (!hotspot || !questId || !userId) return null;
 
@@ -918,15 +929,34 @@ async function joinQuestQueue(hotspotId, questId, userId) {
     ? new ObjectId(String(hotspot._id))
     : hotspot._id;
 
-  const queueEntries = Array.isArray(hotspot.questq_ids) ? hotspot.questq_ids : [];
+  const userIdStr = String(userId);
+  const recipientObj = { userId: userIdStr, description: description || "" };
+
+  // Read raw doc to check existing entries (bypass normalization)
+  const rawDoc = await hotspots.findOne({ _id: targetId });
+  const queueEntries = Array.isArray(rawDoc?.questq_ids) ? rawDoc.questq_ids : [];
   const matchedEntry = queueEntries.find((entry) => String(entry?.quest_id) === String(questId));
 
   if (matchedEntry) {
-    await hotspots.updateOne(
-      { _id: targetId },
-      { $addToSet: { "questq_ids.$[q].recipient_ids": String(userId) } },
-      { arrayFilters: [{ "q.quest_id": matchedEntry.quest_id }] }
+    const recipients = Array.isArray(matchedEntry.recipient_ids) ? matchedEntry.recipient_ids : [];
+    const alreadyQueued = recipients.some((r) =>
+      (typeof r === "string" ? r : r?.userId) === userIdStr
     );
+
+    if (alreadyQueued) {
+      // Update description for existing entry
+      await hotspots.updateOne(
+        { _id: targetId },
+        { $set: { "questq_ids.$[q].recipient_ids.$[r].description": description || "" } },
+        { arrayFilters: [{ "q.quest_id": matchedEntry.quest_id }, { "r.userId": userIdStr }] }
+      );
+    } else {
+      await hotspots.updateOne(
+        { _id: targetId },
+        { $push: { "questq_ids.$[q].recipient_ids": recipientObj } },
+        { arrayFilters: [{ "q.quest_id": matchedEntry.quest_id }] }
+      );
+    }
   } else {
     await hotspots.updateOne(
       { _id: targetId },
@@ -934,7 +964,7 @@ async function joinQuestQueue(hotspotId, questId, userId) {
         $push: {
           questq_ids: {
             quest_id: String(questId),
-            recipient_ids: [String(userId)],
+            recipient_ids: [recipientObj],
           },
         },
       }
@@ -942,6 +972,42 @@ async function joinQuestQueue(hotspotId, questId, userId) {
   }
 
   return await getHotspotById(hotspot._id);
+}
+
+async function dequeueQuestRecipient(hotspotId, questId) {
+  const hotspot = await getHotspotById(hotspotId);
+  if (!hotspot) return null;
+
+  const hotspots = db.collection("hotspotTable");
+  const targetId = ObjectId.isValid(String(hotspot._id))
+    ? new ObjectId(String(hotspot._id))
+    : hotspot._id;
+
+  const rawDoc = await hotspots.findOne({ _id: targetId });
+  const queueEntries = Array.isArray(rawDoc?.questq_ids) ? rawDoc.questq_ids : [];
+  const entry = queueEntries.find((e) => String(e?.quest_id) === String(questId));
+  if (!entry) return null;
+
+  const recipients = Array.isArray(entry.recipient_ids) ? entry.recipient_ids : [];
+  if (recipients.length === 0) return null;
+
+  const first = recipients[0];
+  const recipientId = typeof first === "string" ? first : first?.userId;
+  const description = typeof first === "string" ? "" : (first?.description || "");
+
+  // Remove the first recipient
+  await hotspots.updateOne(
+    { _id: targetId, "questq_ids.quest_id": String(questId) },
+    { $pop: { "questq_ids.$.recipient_ids": -1 } }
+  );
+
+  // Clean up empty queue entries
+  await hotspots.updateOne(
+    { _id: targetId },
+    { $pull: { questq_ids: { quest_id: String(questId), recipient_ids: { $size: 0 } } } }
+  );
+
+  return { recipientId, description };
 }
 
 async function acquireQuestRecipientForCompletion(questId, requestedRecipientId) {
@@ -957,9 +1023,12 @@ async function acquireQuestRecipientForCompletion(questId, requestedRecipientId)
       const recipients = Array.isArray(entry.recipient_ids) ? entry.recipient_ids : [];
       if (recipients.length === 0) continue;
 
+      // Extract userId from both string and { userId, description } formats
+      const getRecipientId = (r) => typeof r === "string" ? r : (r?.userId || null);
+
       let recipientValue = recipients[0];
       if (requestedText != null) {
-        const matched = recipients.find((candidate) => String(candidate) === requestedText);
+        const matched = recipients.find((candidate) => String(getRecipientId(candidate)) === requestedText);
         if (matched == null) continue;
         recipientValue = matched;
       }
@@ -974,14 +1043,14 @@ async function acquireQuestRecipientForCompletion(questId, requestedRecipientId)
 
       await hotspots.updateOne(
         { _id: hotspot._id },
-        { $pull: { questq_ids: { quest_id: entry.quest_id, recipient_ids: [] } } }
+        { $pull: { questq_ids: { quest_id: entry.quest_id, recipient_ids: { $size: 0 } } } }
       );
 
       const refreshed = await hotspots.findOne({ _id: hotspot._id });
       return {
         hotspot: normalizeHotspot(refreshed),
         hotspot_id: hotspot._id.toString(),
-        recipient_id: recipientValue,
+        recipient_id: getRecipientId(recipientValue),
         quest_key: entry.quest_id,
       };
     }
@@ -1260,7 +1329,7 @@ module.exports = {
   getUser, getUserByUsername, createUser, updateUserLocation, updateUserBalance, updateUserHotspot,
   getHotspots, createHotspot, getHotspotById, getNearbyHotspots, removeRecipientFromQueue,
   joinQuestQueue,
-  acquireQuestRecipientForCompletion, requeueQuestRecipient,
+  acquireQuestRecipientForCompletion, requeueQuestRecipient, dequeueQuestRecipient,
   getTunnel, createTunnel, updateTunnelStatus, deleteTunnel,
   getAllStocks, getStockByTicker, getCategories, getLeaderboard, getUserStats,
   getConversationsByUser, getMessagesByConversation, createMessage,

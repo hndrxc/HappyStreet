@@ -9,7 +9,7 @@ import { useAuth } from "@/context/AuthContext";
 import { fetchNearbyHotspots, geoToLeaflet, fetchHotspotById } from "@/lib/api";
 import { LocationCrosshairIcon } from "@/components/icons";
 
-import { CATEGORY_COLORS } from "@/lib/mockData";
+import { CATEGORY_COLORS } from "@/lib/categories";
 
 // Default center: LSU campus
 const DEFAULT_CENTER = [30.4133, -91.1800];

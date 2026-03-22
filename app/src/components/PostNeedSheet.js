@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { CloseIcon } from "./icons";
 import { createQuest } from "@/lib/api";
-import { CATEGORY_COLORS } from "@/lib/mockData";
+import { CATEGORY_COLORS } from "@/lib/categories";
 
 const CATEGORIES = [
   "kindness",

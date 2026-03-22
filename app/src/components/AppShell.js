@@ -1,12 +1,24 @@
 "use client";
 
+import { useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
+import useSocket from "@/lib/useSocket";
 import BottomTabBar from "./BottomTabBar";
 import LoginPage from "./pages/LoginPage";
-import IncomingRequestPopup from "./IncomingRequestPopup";
 
 export default function AppShell({ children }) {
-  const { user, isLoading } = useAuth();
+  const { user, isLoading, updateUser } = useAuth();
+  const { socket } = useSocket(user);
+
+  // Keep user.hotspot_id in sync with server
+  useEffect(() => {
+    if (!socket) return;
+    const onHotspotChanged = ({ hotspot_id }) => {
+      updateUser({ hotspot_id: hotspot_id || null });
+    };
+    socket.on("user_hotspot_changed", onHotspotChanged);
+    return () => socket.off("user_hotspot_changed", onHotspotChanged);
+  }, [socket, updateUser]);
 
   // Loading state
   if (isLoading) {
@@ -34,7 +46,6 @@ export default function AppShell({ children }) {
         </div>
       </main>
       <BottomTabBar />
-      <IncomingRequestPopup />
     </div>
   );
 }

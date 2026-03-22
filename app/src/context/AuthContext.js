@@ -48,6 +48,10 @@ export function AuthProvider({ children }) {
     }
   };
 
+  const updateUser = (partial) => {
+    setUser((prev) => (prev ? { ...prev, ...partial } : prev));
+  };
+
   const logout = () => {
     localStorage.removeItem("happystreet_token");
     setUser(null);
@@ -55,7 +59,7 @@ export function AuthProvider({ children }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, isLoading, login, register, logout }}>
+    <AuthContext.Provider value={{ user, token, isLoading, login, register, logout, updateUser }}>
       {children}
     </AuthContext.Provider>
   );

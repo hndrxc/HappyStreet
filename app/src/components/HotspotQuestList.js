@@ -18,11 +18,13 @@ export default function HotspotQuestList({ hotspot, onBack }) {
   const [toast, setToast] = useState({ visible: false, coinAmount: 0, category: null });
   const [requestModal, setRequestModal] = useState(null);
   const [waitingForMatch, setWaitingForMatch] = useState(false);
+  const [questqIds, setQuestqIds] = useState(hotspot?.questq_ids || []);
 
   const { user } = useAuth();
   const { socket } = useSocket(user);
   const userId = user?.id || user?._id || null;
   const hotspotId = hotspot?.id || hotspot?._id || null;
+  const isAtHotspot = user?.hotspot_id && hotspotId && String(user.hotspot_id) === String(hotspotId);
 
   useEffect(() => {
     if (!hotspotId) return;
@@ -44,6 +46,19 @@ export default function HotspotQuestList({ hotspot, onBack }) {
       isCancelled = true;
     };
   }, [hotspotId]);
+
+  // Keep questq_ids live via socket
+  useEffect(() => {
+    if (!socket || !hotspotId) return;
+    const onHotspotUpdated = (data) => {
+      const updatedId = data.hotspot_id || data._id || data.id;
+      if (String(updatedId) === String(hotspotId)) {
+        setQuestqIds(data.questq_ids || []);
+      }
+    };
+    socket.on("hotspot_updated", onHotspotUpdated);
+    return () => socket.off("hotspot_updated", onHotspotUpdated);
+  }, [socket, hotspotId]);
 
   useEffect(() => {
     if (!socket) return;
@@ -95,22 +110,17 @@ export default function HotspotQuestList({ hotspot, onBack }) {
 
     const onRequestSent = () => {
       setWaitingForMatch(true);
-    };
-
-    const onAccepted = () => {
-      setWaitingForMatch(false);
+      setTimeout(() => setWaitingForMatch(false), 3000);
     };
 
     socket.on("quest_completed", onQuestCompleted);
     socket.on("quest_completion_rejected", onQuestCompletionRejected);
     socket.on("task_request_sent", onRequestSent);
-    socket.on("task_accepted", onAccepted);
 
     return () => {
       socket.off("quest_completed", onQuestCompleted);
       socket.off("quest_completion_rejected", onQuestCompletionRejected);
       socket.off("task_request_sent", onRequestSent);
-      socket.off("task_accepted", onAccepted);
     };
   }, [socket, pendingCompletion, userId]);
 
@@ -153,10 +163,11 @@ export default function HotspotQuestList({ hotspot, onBack }) {
   }, []);
 
   const handleTaskAction = (quest, action) => {
+    if (!isAtHotspot) return;
     setRequestModal({ quest, action });
   };
 
-  const handleTaskActionConfirm = () => {
+  const handleTaskActionConfirm = (description) => {
     if (!requestModal || !socket || !user || !hotspotId) {
       setRequestModal(null);
       return;
@@ -176,10 +187,9 @@ export default function HotspotQuestList({ hotspot, onBack }) {
       hotspotName: hotspot?.name,
       action: requestModal.action,
       userId,
-      username: user.username,
+      description: description || "",
     });
 
-    setWaitingForMatch(true);
     setRequestModal(null);
   };
 
@@ -187,8 +197,20 @@ export default function HotspotQuestList({ hotspot, onBack }) {
     setRequestModal(null);
   };
 
+  const handleAcceptQuest = (questId) => {
+    if (!socket || !userId || !hotspotId || !isAtHotspot) return;
+    socket.emit("quest_queue_accept", { hotspotId, questId, userId });
+  };
+
   const isLoading = questsList === null;
   const displayQuests = Array.isArray(questsList) ? questsList : [];
+  const questMap = new Map(displayQuests.map((q) => [String(q.id || q._id), q]));
+
+  // Filter queue entries that have people waiting
+  const activeRequests = questqIds.filter((entry) => {
+    const recipients = Array.isArray(entry.recipient_ids) ? entry.recipient_ids : [];
+    return recipients.length > 0;
+  });
 
   return (
     <div className="page-shell">
@@ -205,10 +227,18 @@ export default function HotspotQuestList({ hotspot, onBack }) {
         </h1>
       </header>
 
+      {!isAtHotspot && (
+        <div className="px-4 py-2 bg-base-darker border-b border-border text-center">
+          <p className="text-xs text-text-muted">
+            Visit this hotspot to request or accept quests
+          </p>
+        </div>
+      )}
+
       {waitingForMatch && (
         <div className="px-4 py-3 bg-accent/10 border-b border-accent/20 text-center">
           <p className="text-sm text-accent font-medium animate-pulse">
-            Looking for someone nearby...
+            Request submitted
           </p>
         </div>
       )}
@@ -217,6 +247,50 @@ export default function HotspotQuestList({ hotspot, onBack }) {
         <div className="page-content space-y-3">
           {completionError && (
             <p className="text-sm text-error text-center">{completionError}</p>
+          )}
+
+          {/* Requested Quests Panel */}
+          {activeRequests.length > 0 && (
+            <div className="card-stack-center">
+              <h2 className="font-heading text-sm text-text-primary mb-2">Requested Quests</h2>
+              <div className="rounded-2xl border border-border bg-surface overflow-hidden divide-y divide-border">
+                {activeRequests.map((entry) => {
+                  const quest = questMap.get(String(entry.quest_id));
+                  const recipients = Array.isArray(entry.recipient_ids) ? entry.recipient_ids : [];
+                  const count = recipients.length;
+
+                  return (
+                    <div key={entry.quest_id} className="p-3 flex items-center gap-3">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-text-primary truncate">
+                          {quest?.title || entry.quest_id}
+                        </p>
+                        <p className="text-xs text-text-muted">
+                          {count} {count === 1 ? "person" : "people"} waiting
+                        </p>
+                        {recipients.slice(0, 3).map((r, i) => {
+                          const desc = typeof r === "object" ? r.description : "";
+                          return desc ? (
+                            <p key={i} className="text-xs text-text-secondary truncate mt-0.5 italic">
+                              &quot;{desc}&quot;
+                            </p>
+                          ) : null;
+                        })}
+                      </div>
+                      <button
+                        onClick={() => handleAcceptQuest(entry.quest_id)}
+                        disabled={!isAtHotspot}
+                        className="w-10 h-10 rounded-xl bg-success/15 text-success flex items-center justify-center shrink-0 transition-all active:scale-90 disabled:opacity-30 disabled:cursor-not-allowed"
+                      >
+                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                        </svg>
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           )}
 
           {isLoading ? (
@@ -264,13 +338,15 @@ export default function HotspotQuestList({ hotspot, onBack }) {
                     <div className="grid grid-cols-2 gap-2 mt-2">
                       <button
                         onClick={() => handleTaskAction(quest, "request")}
-                        className="min-h-[2.25rem] rounded-xl text-sm font-semibold border border-accent/40 text-accent hover:bg-accent/5 transition-colors"
+                        disabled={!isAtHotspot}
+                        className="min-h-[2.25rem] rounded-xl text-sm font-semibold border border-accent/40 text-accent hover:bg-accent/5 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                       >
                         Request Help
                       </button>
                       <button
                         onClick={() => handleTaskAction(quest, "offer")}
-                        className="min-h-[2.25rem] rounded-xl text-sm font-semibold border border-border text-text-secondary hover:bg-base transition-colors"
+                        disabled={!isAtHotspot}
+                        className="min-h-[2.25rem] rounded-xl text-sm font-semibold border border-border text-text-secondary hover:bg-base transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                       >
                         Offer Help
                       </button>
@@ -311,6 +387,7 @@ export default function HotspotQuestList({ hotspot, onBack }) {
 
 function TaskActionConfirmModal({ quest, action, onConfirm, onCancel }) {
   const isRequest = action === "request";
+  const [description, setDescription] = useState("");
 
   return (
     <>
@@ -323,9 +400,16 @@ function TaskActionConfirmModal({ quest, action, onConfirm, onCancel }) {
           <h3 className="font-heading text-base text-text-primary text-center mb-2">
             {isRequest ? "Request this quest?" : "Offer help for this quest?"}
           </h3>
-          <p className="text-text-secondary text-sm text-center mb-6">
+          <p className="text-text-secondary text-sm text-center mb-4">
             {quest.title}
           </p>
+          <textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Describe who you are and where you are at this hotspot..."
+            rows={3}
+            className="w-full rounded-xl border border-border bg-base p-3 text-sm text-text-primary placeholder:text-text-muted resize-none mb-4 focus:outline-none focus:border-accent"
+          />
           <div className="flex gap-3">
             <button
               onClick={onCancel}
@@ -334,7 +418,7 @@ function TaskActionConfirmModal({ quest, action, onConfirm, onCancel }) {
               Cancel
             </button>
             <button
-              onClick={onConfirm}
+              onClick={() => onConfirm(description)}
               className="flex-1 py-3 bg-accent text-text-on-accent rounded-xl font-semibold transition-all active:scale-95"
             >
               {isRequest ? "Request" : "Offer"}

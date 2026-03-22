@@ -210,6 +210,7 @@ async function requestHandler(req, res) {
         balance: user.balance,
         joy_coins: user.joy_coins || 0,
         total_completions: user.total_completions || 0,
+        hotspot_id: user.hotspot_id || null,
       });
       return;
     }
@@ -584,56 +585,102 @@ io.on("connection", async (socket) => {
         // Find the closest hotspot the user is physically inside
         const nearest = hotspots[0];
         const insideHotspot = nearest && nearest.distance_meters <= (nearest.radius_meters ?? 80);
-        const hotspotId = insideHotspot ? (nearest._id || nearest.id) : null;
-        await db.updateUserHotspot(userId, hotspotId ? String(hotspotId) : null);
+        const userHotspotId = insideHotspot ? (nearest._id || nearest.id) : null;
+        const userHotspotStr = userHotspotId ? String(userHotspotId) : null;
+        await db.updateUserHotspot(userId, userHotspotStr);
+        socket.emit("user_hotspot_changed", { hotspot_id: userHotspotStr });
       }
     } catch (err) {
       console.error("update_location failed:", err);
     }
   });
 
-  socket.on("task_request", (payload = {}) => {
-    const { task, hotspotId, hotspotName, action, userId, username } = payload;
+  socket.on("task_request", async (payload = {}) => {
+    const { task, hotspotId, action, userId, description } = payload;
     if (!task || !hotspotId || !action) return;
 
-    const requestId = `${socket.id}_${Date.now()}`;
-    for (const [sid, meta] of socketMeta.entries()) {
-      if (sid === socket.id) continue;
-      if (meta?.userId && userId && String(meta.userId) === String(userId)) continue;
-
-      io.to(sid).emit("incoming_task_request", {
-        requestId,
-        task,
-        hotspotId,
-        hotspotName,
-        action,
-        fromUserId: userId,
-        fromUsername: username,
-        fromSocketId: socket.id,
-      });
+    // Proximity check: user must be at this hotspot
+    if (userId) {
+      try {
+        const reqUser = await db.getUser(userId);
+        if (!reqUser || String(reqUser.hotspot_id || "") !== String(hotspotId)) {
+          socket.emit("task_request_error", { error: "You must be at this hotspot" });
+          return;
+        }
+      } catch (err) {
+        console.error("task_request proximity check failed:", err);
+        return;
+      }
     }
 
-    socket.emit("task_request_sent", { requestId, task });
+    // Persist the requester to the quest queue with their description
+    const questId = typeof task === "object" ? (task.id || task._id) : task;
+    if (questId && hotspotId && userId) {
+      try {
+        const hotspot = await db.joinQuestQueue(hotspotId, questId, userId, description || "");
+        if (hotspot) {
+          io.emit("hotspot_updated", {
+            hotspot_id: hotspot._id || hotspot.id,
+            name: hotspot.name,
+            heat_score: hotspot.heat_score || 0,
+            questq_ids: hotspot.questq_ids || [],
+            quest_ids: hotspot.quest_ids || [],
+          });
+        }
+      } catch (err) {
+        console.error("task_request queue write failed:", err);
+      }
+    }
+
+    socket.emit("task_request_sent", { requestId: `${socket.id}_${Date.now()}`, task });
   });
 
-  socket.on("task_accept", (payload = {}) => {
-    const { requestId, fromSocketId, task, userId, username } = payload;
-    if (!requestId || !fromSocketId || !task) return;
+  socket.on("quest_queue_accept", async (payload = {}) => {
+    const { hotspotId, questId, userId } = payload;
+    if (!hotspotId || !questId || !userId) return;
 
-    io.to(fromSocketId).emit("task_accepted", {
-      requestId,
-      task,
-      byUserId: userId,
-      byUsername: username,
-      acceptedSocketId: socket.id,
-    });
+    try {
+      // Proximity check
+      const acceptUser = await db.getUser(userId);
+      if (!acceptUser || String(acceptUser.hotspot_id || "") !== String(hotspotId)) {
+        socket.emit("quest_accept_error", { error: "You must be at this hotspot" });
+        return;
+      }
 
-    socket.emit("task_accept_confirmed", { requestId, task });
-  });
+      const dequeued = await db.dequeueQuestRecipient(hotspotId, questId);
+      if (!dequeued) {
+        socket.emit("quest_accept_error", { error: "No one is waiting for this quest" });
+        return;
+      }
 
-  socket.on("task_decline", ({ requestId } = {}) => {
-    if (!requestId) return;
-    console.log(`${socket.id} declined request ${requestId}`);
+      // Create a tunnel connecting acceptor (offerer) and requester (recipient)
+      const tunnel = await db.createTunnel(questId, dequeued.recipientId, hotspotId);
+      if (tunnel) {
+        await db.updateTunnelStatus(tunnel._id.toString(), "MATCHED", {
+          offerer_id: String(userId),
+        });
+      }
+
+      // Broadcast updated hotspot so panel refreshes
+      const updatedHotspot = await db.getHotspotById(hotspotId);
+      if (updatedHotspot) {
+        io.emit("hotspot_updated", {
+          hotspot_id: updatedHotspot._id || updatedHotspot.id,
+          name: updatedHotspot.name,
+          heat_score: updatedHotspot.heat_score || 0,
+          questq_ids: updatedHotspot.questq_ids || [],
+          quest_ids: updatedHotspot.quest_ids || [],
+        });
+      }
+
+      socket.emit("quest_accepted", {
+        questId,
+        recipientId: dequeued.recipientId,
+        description: dequeued.description,
+      });
+    } catch (err) {
+      console.error("quest_queue_accept failed:", err);
+    }
   });
 
   socket.on("join_quest", async (payload) => {
