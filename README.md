@@ -1,5 +1,7 @@
 # HappyStreet
 
+Project is live at: hpx.taiisshort.com
+
 A community task marketplace where users can help other users.
 
 # Description
