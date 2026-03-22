@@ -245,10 +245,45 @@ io.on("connection", async (socket) => {
     }
   });
 
+
+socket.on("complete_quest", async ({ questId, userId }) => {
+  try {
+    const updated = await db.completeQuest(questId);
+    if (!updated) return;
+
+    // Step 3 first — query before mutation
+    const affectedHotspots = await db.collection("hotspotTable").find(
+      { "questq_ids.quest_id": questId }
+    ).toArray();
+
+    
+    await db.removeRecipientFromQueue(questId, userId);
+
+    // Emit hotspot_updated with post-mutation state
+    for (const hotspot of affectedHotspots) {
+      const updated = await db.getHotspotById(hotspot._id);
+      io.emit("hotspot_updated", {
+        hotspot_id: hotspot._id,
+        name: hotspot.name,
+        questq_ids: updated.questq_ids
+      });
+    }
+
+    io.emit("quests_updated", await db.getQuests());
+    io.emit("quest_completed", { quest: updated, by: userId });
+
+  } catch (err) {
+    console.error("complete_quest failed:", err);
+  }
+});
+
+
+
   socket.on("disconnect", () => {
     console.log("client disconnected:", socket.id);
   });
 });
+
 
 // --- Start ---
 if (!MONGODB_URI) {

@@ -443,13 +443,24 @@ async function getNearbyHotspots(lat, lon, radius = 2000) {
     }
   }).toArray();
 }
+async function removeRecipientFromQueue(questId, userId) {
+  await db.collection("hotspotTable").updateMany(
+    { "questq_ids.quest_id": questId },
+    { $pull: { "questq_ids.$[elem].recipient_ids": userId } },
+    { arrayFilters: [{ "elem.quest_id": questId }] }
+  );
 
+  await db.collection("hotspotTable").updateMany(
+    { "questq_ids": { $elemMatch: { "quest_id": questId, "recipient_ids": { $size: 0 } } } },
+    { $pull: { "questq_ids": { quest_id: questId, recipient_ids: { $size: 0 } } } }
+  );
+}
 module.exports = {
   DEFAULT_CATEGORY,
   isValidCategory,
   connect,
   getQuests, createQuest, completeQuest, getNearbyQuests,
   getUser, createUser, updateUserLocation, updateUserBalance,
-  getHotspots, createHotspot, getHotspotById, getNearbyHotspots,
+  getHotspots, createHotspot, getHotspotById, getNearbyHotspots, removeRecipientFromQueue,
   getTunnel, createTunnel, updateTunnelStatus,
 };
