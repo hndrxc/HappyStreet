@@ -73,69 +73,132 @@ async function requestHandler(req, res) {
 
   try {
     const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+    
+    //giant pathname switch
+    switch (url.pathname){
 
-    if (req.method === "GET" && url.pathname === "/quests/nearby") {
-      const lat = parseFloat(url.searchParams.get("lat"));
-      const lon = parseFloat(url.searchParams.get("lon"));
+        case "/quests": 
+            if (req.method==="GET"){
+            const quests = await db.getQuests();
+            sendJson(res, 200, quests);
+            return;
 
-      if (isNaN(lat) || isNaN(lon)) {
-        sendJson(res, 400, { error: "lat and lon query params required" });
-        return;
-      }
-      if (lat < -90 || lat > 90 || lon < -180 || lon > 180) {
-        sendJson(res, 400, { error: "lat must be -90..90, lon must be -180..180" });
-        return;
-      }
+            }
+            if (req.method==="POST"){
+                let body;
+                try {
+                    body = await parseJsonBody(req);
+                } catch (err) {
+                    if (err && err.statusCode) {
+                    sendJson(res, err.statusCode, { error: err.message });
+                    return;
+                    }
+                    throw err;
+                }
 
-      const radius = parseFloat(url.searchParams.get("radius")) || 1000;
-      const limit = parseInt(url.searchParams.get("limit"), 10) || 20;
-      const category = url.searchParams.get("category") || undefined;
-      const difficulty = url.searchParams.get("difficulty") || undefined;
+                const title = typeof body.title === "string" ? body.title.trim() : "";
+                if (!title) {
+                    sendJson(res, 400, { error: "title required" });
+                    return;
+                }
 
-      const quests = await db.getNearbyQuests({ lat, lon, radius, category, difficulty, limit });
-      sendJson(res, 200, quests);
-      return;
+                if (body.category !== undefined && typeof body.category !== "string") {
+                    sendJson(res, 400, { error: "category must be a string" });
+                    return;
+                }
+
+                const categoryInput = typeof body.category === "string" ? body.category.trim() : "";
+                if (categoryInput && !db.isValidCategory(categoryInput)) {
+                    sendJson(res, 400, { error: "invalid category" });
+                    return;
+                }
+                const category = categoryInput || db.DEFAULT_CATEGORY;
+
+                const quest = await db.createQuest(title, 100, category);
+                io.emit("quest_added", quest);
+                sendJson(res, 201, quest);
+                return;
+
+            }
+            if (req.method === "PUT"){
+
+
+            }
+            sendJson(res, 405, { error: "Method not allowed" });
+            return;
+            break;
+        
+        case "/hotspots/nearby":
+            if (req.method === "GET"){
+
+            }
+            if (req.method === "GET"){
+                
+            }
+            if (req.method === "GET"){
+                
+            }
+            sendJson(res, 405, { error: "Method not allowed" });
+            return;
+            break;
+        
+       
+
+
+        case "/quests/nearby":
+            if (req.method === "GET"){
+                const lat = parseFloat(url.searchParams.get("lat"));
+                const lon = parseFloat(url.searchParams.get("lon"));
+
+                if (isNaN(lat) || isNaN(lon)) {
+                    sendJson(res, 400, { error: "lat and lon query params required" });
+                    return;
+                }
+                if (lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+                    sendJson(res, 400, { error: "lat must be -90..90, lon must be -180..180" });
+                    return;
+                }
+
+                const radius = parseFloat(url.searchParams.get("radius")) || 1000;
+                const limit = parseInt(url.searchParams.get("limit"), 10) || 20;
+                const category = url.searchParams.get("category") || undefined;
+                const difficulty = url.searchParams.get("difficulty") || undefined;
+
+                const quests = await db.getNearbyQuests({ lat, lon, radius, category, difficulty, limit });
+                sendJson(res, 200, quests);
+                return;
+            }
+            if (req.method === "GET"){
+                
+            }
+            if (req.method === "GET"){
+                
+            }
+            sendJson(res, 405, { error: "Method not allowed" });
+            return;
+            break;
+        
+        
+
+
+
+
+
+
+
+
+
+
     }
-
-    if (req.method === "GET" && url.pathname === "/quests") {
-      const quests = await db.getQuests();
-      sendJson(res, 200, quests);
-      return;
-    }
-
-    if (req.method === "POST" && url.pathname === "/quests") {
-      let body;
-      try {
-        body = await parseJsonBody(req);
-      } catch (err) {
-        if (err && err.statusCode) {
-          sendJson(res, err.statusCode, { error: err.message });
-          return;
-        }
-        throw err;
-      }
-
-      const title = typeof body.title === "string" ? body.title.trim() : "";
-      if (!title) {
-        sendJson(res, 400, { error: "title required" });
+     if (url.pathname.startsWith("/hotspots/")) {
+      const id = url.pathname.slice("/hotspots/".length);
+      if (req.method === "GET") {
+        const hotspot = await db.getHotspotById(id);
+        if (!hotspot) { sendJson(res, 404, { error: "not found" }); return; }
+        sendJson(res, 200, hotspot);
         return;
       }
-
-      if (body.category !== undefined && typeof body.category !== "string") {
-        sendJson(res, 400, { error: "category must be a string" });
-        return;
-      }
-
-      const categoryInput = typeof body.category === "string" ? body.category.trim() : "";
-      if (categoryInput && !db.isValidCategory(categoryInput)) {
-        sendJson(res, 400, { error: "invalid category" });
-        return;
-      }
-      const category = categoryInput || db.DEFAULT_CATEGORY;
-
-      const quest = await db.createQuest(title, 100, category);
-      io.emit("quest_added", quest);
-      sendJson(res, 201, quest);
+      sendJson(res, 405, { error: "Method not allowed" });
       return;
     }
 
@@ -149,6 +212,7 @@ async function requestHandler(req, res) {
     }
   }
 }
+
 
 // --- Socket.io ---
 io.on("connection", async (socket) => {
